@@ -30,8 +30,39 @@ loop <- function (text) {
 
 
 generate_var_id <- function () {
-  #TODO: introduce UUIDs
+  # TODO: introduce UUIDs
   return(as.integer(Sys.time()))
+}
+
+
+find_var <- function (name, variables) {
+  var <- NULL;
+  index <- length(variables) + 1;
+  
+  if (length(variables) > 0)
+    for (i in 1:length(variables)) {
+      old_var <- variables[[i]];
+  
+      if (old_var$name == name) {
+        var <- old_var;
+        index <- i;
+        
+        break;
+      }
+    }
+  
+  if (index > length(variables)) {
+    var <- vector(mode="list");
+    
+    #var$id <- generate_var_id();
+    var$name <- name;
+    var$functions <- list();
+    var$precursors <- list();
+
+    variables[[index]] <- var;
+  }
+  
+  return(list(index, variables))
 }
 
 
@@ -44,59 +75,50 @@ recursion <- function (exp, variables, functions) {
     }
 
     # Get or create the variable
-    new_var <- NULL;
-    was_new_var <- FALSE;
-    
-    for (old_var in variables) {
-      if (old_var$name == as.character(exp[[2]])) {
-        new_var <- old_var;
-        
-        break;
-      }
-    }
-    
-    if (is.null(new_var)) {
-      was_new_var <- TRUE;
-      new_var <- vector(mode="list");
-      
-      new_var$id <- generate_var_id();
-      new_var$name <- as.character(exp[[2]]);
-      new_var$functions <- list();
-    }
-    
+    c(var_index, variables) %<-% find_var(as.character(exp[[2]]), variables)
+
     # Find the precursors and invoked functions
-    c(precursor_variables, f) %<-% recursion(exp[[3]], list(), list());
+    c(precursor_variables, mutator_functions) %<-% recursion(exp[[3]], list(), list());
     
     # Add the newly gathered data to the larger massif
-    for (var in precursor_variables) {
-      if (var$name == new_var$name) {
-        # TODO: decide on the course of action
+    for (pre_var in precursor_variables) {
+      c(pre_var_index, variables) %<-% find_var(pre_var$name, variables)
+
+      if (variables[[pre_var_index]]$name == variables[[var_index]]$name) {
+        # TODO: decide what to do with self-references
         next;
       }
+
+      if (!(variables[[pre_var_index]]$name %in% variables[[var_index]]$precursors))
+        #variables[[var_index]]$precursors[[length(variables[[var_index]]$precursors) + 1]] <- variables[[pre_var_index]]$id;
+        variables[[var_index]]$precursors[[length(variables[[var_index]]$precursors) + 1]] <- variables[[pre_var_index]]$name;
       
-      for (old_var in variables) {
-        if (var$name == old_var$name) {
-          var <- old_var
-          break;
-        }
-      }
+      variables[[pre_var_index]]$functions <- append(variables[[pre_var_index]]$functions, mutator_functions);
+    }
+  
+  # Is "$" call 
+  } else if (is.call(exp) && identical(exp[[1]], quote(`$`))) {
+    # Skip retrievals of property
+    c(variables, functions) %<-% recursion(exp[[2]], variables, functions);
       
-      #new_var$precursors[[length(new_var$precursors) + 1]] <- var$id;
-      new_var$precursors[[length(new_var$precursors) + 1]] <- var$name;
-      var$functions <- append(var$functions, f);
-    }
-    
-    if (was_new_var) {
-      variables[[length(variables) + 1]] <- new_var;
-    }
-    
-    # Is function declaration
+  # Is function declaration
   } else if (is.call(exp) && identical(exp[[1]], quote(`function`))) {
-    # Skip?
+    # TODO: introduce scopes
     
     # functions[[length(functions) + 1]] <- exp;
-    
-    # Is function call
+
+  # Is if/for clause
+  } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)))) {
+    # TODO: add conditional as the precursor?
+  
+    c(variables, functions) %<-% recursion(exp[[3]], variables, functions);
+
+  # Is block statement
+  } else if (is.call(exp) && identical(exp[[1]], quote(`{`))) {
+    for (line in as.list(exp)[2:length(exp)])
+      c(variables, functions) %<-% recursion(line, variables, functions);
+
+  # Is a generic function call
   } else if (is.call(exp)) {
     functions <- append(functions, as.character(exp[[1]]))
     
@@ -109,8 +131,8 @@ recursion <- function (exp, variables, functions) {
         c(variables, functions) %<-% recursion(arg, variables, functions);
       }
     }
-    
-    # Is variable name call
+
+  # Is variable name call
   } else if (is.name(exp)) {
     is_existing_var <- FALSE;
     
@@ -124,17 +146,17 @@ recursion <- function (exp, variables, functions) {
     if (!is_existing_var) {
       new_var <- vector(mode="list")
       
-      new_var$id <- generate_var_id();
+      #new_var$id <- generate_var_id();
       new_var$name <- as.character(exp);
       new_var$functions <- list();
       
       variables[[length(variables) + 1]] <- new_var;
     }
     
-    # Is atomic
+  # Is atomic
   } else if (is.atomic(exp)) {
     
-    # Dunno
+  # Dunno
   } else {
     
   }
@@ -166,6 +188,8 @@ addin <- function() {
       output$graph <- renderUI({
         pre(HTML(jsonlite::toJSON(stuff, auto_unbox = TRUE, pretty = TRUE)))
       })
+
+      old_path <- path;
     })
   }
   
