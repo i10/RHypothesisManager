@@ -1,6 +1,7 @@
 import(miniUI);
 import(pryr);
 import(shiny);
+import(uuid);
 import(zeallot);
 
 export(addin);
