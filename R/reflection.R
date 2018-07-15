@@ -92,14 +92,22 @@ recursion <- function (exp, variables, functions) {
 
   # Is "$" call
   } else if (is.call(exp) && identical(exp[[1]], quote(`$`))) {
-    # Skip retrievals of property
+    # Skip retrievals of property, but continue upon the variable
     c(variables, functions) %<-% recursion(exp[[2]], variables, functions);
+
+  # Is "~" call
+  } else if (is.call(exp) && identical(exp[[1]], quote(`~`))) {
+    # Skip formulas
 
   # Is function declaration
   } else if (is.call(exp) && identical(exp[[1]], quote(`function`))) {
     # TODO: introduce scopes
 
     # functions[[length(functions) + 1]] <- exp;
+
+  # Is library import call
+  } else if (is.call(exp) && identical(exp[[1]], quote(`library`))) {
+    # Skip retrievals of property
 
   # Is if/for clause
   } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)))) {
@@ -162,8 +170,8 @@ recursion <- function (exp, variables, functions) {
 
 addin <- function() {
   ui = bootstrapPage(
-    RDataFlowOutput("graph"),
-    tag('svg', list())
+    tag('svg', list()),
+    RDataFlowOutput("graph")
   )
 
   server <- function(input, output, session) {
@@ -177,10 +185,10 @@ addin <- function() {
 
       if (path != old_path) {
         #selections <- lapply(selections, unwrapSelections);
-        stuff <- loop(textContents);
+        c(variables, functions) %<-% loop(textContents);
 
         output$graph <- renderRDataFlow({
-          RDataFlow(stuff)
+          RDataFlow(list(variables = variables, functions = functions))
         })
 
         old_path <<- path;
