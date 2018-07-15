@@ -1,4 +1,4 @@
-Name: Reflection
-Description: Does things
+Name: RDataFlow
+Description: Visual and Functional Aids to Support the Statistical Analysis Workflow
 Binding: addin
 Interactive: false

@@ -145,7 +145,7 @@ recursion <- function (exp, variables, functions) {
 
   # Is variable name call
   } else if (is.name(exp)) {
-    print(as.character(exp));
+    # print(as.character(exp));
     c(tmp, variables) %<-% find_var(as.character(exp), variables);
 
   # Is atomic
@@ -161,11 +161,9 @@ recursion <- function (exp, variables, functions) {
 
 
 addin <- function() {
-  ui <- miniPage(
-    gadgetTitleBar("Data structure"),
-    miniContentPanel(
-      uiOutput("graph")
-    )
+  ui = bootstrapPage(
+    RDataFlowOutput("graph"),
+    tag('svg', list())
   )
 
   server <- function(input, output, session) {
@@ -181,8 +179,8 @@ addin <- function() {
         #selections <- lapply(selections, unwrapSelections);
         stuff <- loop(textContents);
 
-        output$graph <- renderUI({
-          pre(HTML(jsonlite::toJSON(stuff, auto_unbox = TRUE, pretty = TRUE)))
+        output$graph <- renderRDataFlow({
+          RDataFlow(stuff)
         })
 
         old_path <<- path;

@@ -6,3 +6,4 @@ import(zeallot);
 
 export(addin);
 export(loop);
+export(RDataFlow);

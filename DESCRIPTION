@@ -1,7 +1,7 @@
-Package: addinexperiments
+Package: RDataFlowPlugin
 Type: Package
-Title: Ilya messing around with Add-Ins
-Version: 0.0.1
+Title: Visual and Functional Aids to Support the Statistical Analysis Workflow
+Version: 0.0.2
 Encoding: UTF-8
 LazyData: true
 Depends:
@@ -9,5 +9,6 @@ Depends:
 Imports:
     zeallot,
     pryr,
-    rstudioapi (>= 0.4)
+    rstudioapi (>= 0.4),
+    htmlwidgets
 RoxygenNote: 5.0.1
