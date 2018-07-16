@@ -177,22 +177,33 @@ addin <- function() {
   server <- function(input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);
     old_path <- "";
+    old_hash <- ""
 
     observe({
       invalidatePeriodically()
 
       c(id, path, textContents, selections) %<-% rstudioapi::getActiveDocumentContext()[0:4];
 
-      if (path != old_path) {
-        #selections <- lapply(selections, unwrapSelections);
-        c(variables, functions) %<-% loop(textContents);
+      hash <- digest::digest(textContents, "md5");
 
-        output$graph <- renderRDataFlow({
-          RDataFlow(list(variables = variables, functions = functions))
-        })
+      if (path != old_path || hash != old_hash)
+        tryCatch(
+          #selections <- lapply(selections, unwrapSelections);
 
-        old_path <<- path;
-      }
+          expr = {
+            c(variables, functions) %<-% loop(textContents);
+
+            output$graph <- renderRDataFlow({
+              RDataFlow(list(variables = variables, functions = functions))
+            })
+
+            old_path <<- path;
+            old_hash <<- hash;
+          },
+          warning = function (...) {},
+          error = function(...) {},
+          finally = {}
+        )
     })
   }
 
