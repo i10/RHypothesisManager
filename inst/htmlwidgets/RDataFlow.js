@@ -14,18 +14,36 @@ HTMLWidgets.widget({
                     node.precursors.forEach(function(precursor_id) {
                         links.push({
                             value: 10,
-                            source: node.id,
-                            target: precursor_id
+                            source: precursor_id,
+                            target: node.id
                         })
                     })
                 });
 
                 const svg = d3.select("svg");
 
+                svg.selectAll("*").remove();
+
+                const defs = svg.append("defs");
+
                 svg.attr("width", width);
                 svg.attr("height", height);
 
-                svg.selectAll("*").remove();
+                defs.append("marker")
+                    .attrs({
+                        "id": "arrow",
+                        "viewBox": "0 -5 10 10",
+                        "refX": 5,
+                        "refY": 0,
+                        "markerWidth": 4,
+                        "markerHeight": 4,
+                        "orient": "auto"
+                    })
+                    .append("path")
+                    .attrs({
+                        "d": "M0,-5L10,0L0,5",
+                        "class": "arrowHead"
+                    });
 
                 const color = d3.scaleOrdinal(d3.schemeCategory20);
 
@@ -39,20 +57,21 @@ HTMLWidgets.widget({
                 const link = svg.append("g")
                     .attr("class", "links")
                     .selectAll("line")
-                    .data(links)
-                    .enter().append("line")
-                    .attr("stroke-width", function (d) {
-                        return Math.sqrt(d.value);
+                    .data(links).enter()
+                    .append("line")
+                    .attrs({
+                        "stroke-width": function (d) { return Math.sqrt(d.value); },
+                        "marker-end": "url(#arrow)"
                     });
 
                 const node = svg.append("g")
                     .attr("class", "nodes")
                     .selectAll("circle")
-                    .data(nodes)
-                    .enter().append("circle")
-                    .attr("r", 5)
-                    .attr("fill", function (d) {
-                        return color(d.group);
+                    .data(nodes).enter()
+                    .append("circle")
+                    .attrs({
+                        "r": 5,
+                        "fill": function (d) { return color(d.group); }
                     })
                     .call(d3.drag()
                         .on("start", dragstarted)
@@ -70,15 +89,17 @@ HTMLWidgets.widget({
                     .links(links);
 
                 function ticked() {
-                    link
-                        .attr("x1", function (d) { return d.source.x; })
-                        .attr("y1", function (d) { return d.source.y; })
-                        .attr("x2", function (d) { return d.target.x; })
-                        .attr("y2", function (d) { return d.target.y; });
+                    link.attrs({
+                        "x1": function (d) { return d.source.x; },
+                        "y1": function (d) { return d.source.y; },
+                        "x2": function (d) { return d.target.x; },
+                        "y2": function (d) { return d.target.y; },
+                    });
 
-                    node
-                        .attr("cx", function (d) { return d.x; })
-                        .attr("cy", function (d) { return d.y; });
+                    node.attrs({
+                        "cx": function (d) { return d.x; },
+                        "cy": function (d) { return d.y; }
+                    });
                 }
 
                 function dragstarted(d) {
