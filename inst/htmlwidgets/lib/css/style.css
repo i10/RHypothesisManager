@@ -1,9 +1,21 @@
-.links line {
+.link {
     stroke: #999;
+    fill: transparent;
     stroke-opacity: 0.6;
 }
 
-.nodes circle {
-    stroke: #fff;
-    stroke-width: 1.5px;
+.node circle {
+    stroke: #444444;
+    fill: #ffffff;
+    stroke-width: 1px;
+}
+
+.node.breakpoint circle {
+    stroke: #aa0022;
+    stroke-width: 2px;
+}
+
+text {
+    font: 12px sans-serif;
+    stroke: black;
 }

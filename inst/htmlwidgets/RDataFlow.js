@@ -7,117 +7,181 @@ HTMLWidgets.widget({
 
         return {
             renderValue: function (x) {
-                const nodes = x.variables,
-                    links = [];
-
-                nodes.forEach(function(node) {
-                    node.precursors.forEach(function(precursor_id) {
-                        links.push({
-                            value: 10,
-                            source: precursor_id,
-                            target: node.id
-                        })
-                    })
-                });
-
                 const svg = d3.select("svg");
 
                 svg.selectAll("*").remove();
 
                 const defs = svg.append("defs");
 
-                svg.attr("width", width);
-                svg.attr("height", height);
+                svg.attrs({
+                    "width": width,
+                    "height": height
+                });
 
-                defs.append("marker")
-                    .attrs({
-                        "id": "arrow",
-                        "viewBox": "0 -5 10 10",
-                        "refX": 5,
-                        "refY": 0,
-                        "markerWidth": 4,
-                        "markerHeight": 4,
-                        "orient": "auto"
-                    })
-                    .append("path")
-                    .attrs({
-                        "d": "M0,-5L10,0L0,5",
-                        "class": "arrowHead"
+                const variables = x.variables,
+                    functions = x.functions,
+                    hypotheses = x.hypotheses;
+
+                const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+                color.domain(d3.map(hypotheses, function(d) { return d.name; }).keys());
+
+                const streams = functions.reduce(function (acc, func, i, arr) {
+                    const args = func.arguments;
+
+                    const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
+                          hyps = hypotheses.filter(function (hypothesis) { return args.indexOf(hypothesis.id) !== -1; });
+
+                    vars.forEach(function (arg, i, arr) {
+                        const categories = hypotheses.filter(function (hypothesis) {
+                            return hypothesis.functions.indexOf(func.id) !== -1 ||
+                                hypothesis.models.indexOf(arg.id) !== -1;
+                        });
+
+                        func.category = categories.length ? categories[0].name : null;
+
+                        if (arg.precursors.length) {
+                            //TODO: resolve recursively
+                            arg = variables.filter(function (variable) { return variable.id === arg.precursors[0]; })[0]
+                        }
+
+                        func.breakpoint = func.breakpoint && func.breakpoint === arg.id;
+
+                        var stream = acc.filter(function (stream) { return stream.name === arg.name; });
+
+                        if (!stream.length) {
+                            stream = {
+                                name: arg.name,
+                                // id: arg.id,
+                                functions: []
+                            };
+
+                            acc.push(stream);
+                            func.parent = null;
+
+                        } else {
+                            stream = stream[0];
+
+                            if (stream.functions.filter(function(ffunc) { return ffunc.id === func.id; }).length)
+                                return;
+
+                            func.parent = stream.functions
+                                .filter(function(notch, i, arr) {
+                                    return (i === 0) ||
+                                        notch.breakpoint ||
+                                        (notch.category === func.category);
+                                })
+                                .reverse()
+                                [0].id;
+                        }
+
+                        stream.functions.push(func);
                     });
 
-                const color = d3.scaleOrdinal(d3.schemeCategory20);
+                    return acc;
+                }, []);
 
-                const simulation = d3.forceSimulation()
-                    .force("link", d3.forceLink().id(function (d) {
-                        return d.id;
-                    }))
-                    .force("charge", d3.forceManyBody())
-                    .force("center", d3.forceCenter(width / 2, height / 2));
+                streams.forEach(function (stream, i, arr) {
+                    const g = svg.append("g")
+                        .attr("transform", "translate(" + i / arr.length * width + "," + 50 + ")");
 
-                const link = svg.append("g")
-                    .attr("class", "links")
-                    .selectAll("line")
-                    .data(links).enter()
-                    .append("line")
-                    .attrs({
-                        "stroke-width": function (d) { return Math.sqrt(d.value); },
-                        "marker-end": "url(#arrow)"
-                    });
+                    g.append("text")
+                        .attrs({
+                            x: width / arr.length / 2,
+                            y: -20,
+                            dy: ".35em"
+                        })
+                        .style("text-anchor", "middle")
+                        .text(stream.name);
 
-                const node = svg.append("g")
-                    .attr("class", "nodes")
-                    .selectAll("circle")
-                    .data(nodes).enter()
-                    .append("circle")
-                    .attrs({
-                        "r": 5,
-                        "fill": function (d) { return color(d.group); }
-                    })
-                    .call(d3.drag()
-                        .on("start", dragstarted)
-                        .on("drag", dragged)
-                        .on("end", dragended));
+                    const tree = d3.tree().size([width / arr.length, height - 80]);
 
-                node.append("title")
-                    .text(function (d) { return d.name; });
+                    stream = d3.stratify()
+                        .id(function (d) { return d.id; })
+                        .parentId(function (d) { return d.parent; })
+                        (stream.functions);
 
-                simulation
-                    .nodes(nodes)
-                    .on("tick", ticked);
+                    /*stream.each(function(d) {
+                        d.name = d.data.name;
+                    });*/
 
-                simulation.force("link")
-                    .links(links);
+                    var nodes = d3.hierarchy(stream);
 
-                function ticked() {
-                    link.attrs({
-                        "x1": function (d) { return d.source.x; },
-                        "y1": function (d) { return d.source.y; },
-                        "x2": function (d) { return d.target.x; },
-                        "y2": function (d) { return d.target.y; },
-                    });
+                    // maps the node data to the tree layout
+                    nodes = tree(nodes);
 
-                    node.attrs({
-                        "cx": function (d) { return d.x; },
-                        "cy": function (d) { return d.y; }
-                    });
-                }
+                    var link = g.selectAll(".link")
+                        .data(nodes.descendants().slice(1))
+                        .enter().append("path")
+                        .attrs({
+                            class: "link",
+                            d: function (d) {
+                                return "M" + d.x + "," + d.y
+                                    + "C" + d.x + "," + (d.y + d.parent.y) / 2
+                                    + " " + d.parent.x + "," + (d.y + d.parent.y) / 2
+                                    + " " + d.parent.x + "," + d.parent.y;
+                            }
+                        });
 
-                function dragstarted(d) {
-                    if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-                    d.fx = d.x;
-                    d.fy = d.y;
-                }
+                    // adds each node as a group
+                    var node = g.selectAll(".node")
+                        .data(nodes.descendants())
+                        .enter().append("g")
+                        .attr("class", function (d) {
+                            return [
+                                "node",
+                                (d.children ? "node--internal" : "node--leaf"),
+                                d.data.data.breakpoint? "breakpoint" : ""
+                            ].join(" ");
+                        })
+                        .attr("transform", function (d) {
+                            return "translate(" + d.x + "," + d.y + ")";
+                        });
 
-                function dragged(d) {
-                    d.fx = d3.event.x;
-                    d.fy = d3.event.y;
-                }
+                    // adds the circle to the node
+                    node.append("circle")
+                        .attr("r", 5)
+                        .style("fill", function (d) {
+                            if (d.data.data.category)
+                                return color(d.data.data.category);
+                        })
+                        .style("stroke", function (d) {
+                            if (!d.data.data.breakpoint && d.data.data.category)
+                                return color(d.data.data.category);
+                        });
 
-                function dragended(d) {
-                    if (!d3.event.active) simulation.alphaTarget(0);
-                    d.fx = null;
-                    d.fy = null;
-                }
+                    node.append("text")
+                        .attrs({
+                            dy: ".35em",
+                            x: 10
+                        })
+                        .style("text-anchor", "left")
+                        .text(function (d) {
+                            return d.data.data.name;
+                        });
+
+                    var legend = svg.append("g")
+                        .selectAll(".legend")
+                        .data(color.domain())
+                        .enter().append("g")
+                        .attr("class", "legend")
+                        .attr("transform", function (d, i) { return "translate(0," + i * 20 + ")"; });
+
+                    // draw legend colored rectangles
+                    legend.append("rect")
+                        .attr("x",      width - 18)
+                        .attr("width",  18)
+                        .attr("height", 18)
+                        .style("fill",  color);
+
+                    // draw legend text
+                    legend.append("text")
+                        .attr("x",      width - 24)
+                        .attr("y",      9)
+                        .attr("dy",     ".35em")
+                        .style("text-anchor", "end")
+                        .text(function (d) { return d; });
+                });
             },
 
             resize: function (width, height) {
