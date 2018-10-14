@@ -30,9 +30,10 @@ HTMLWidgets.widget({
                     const args = func.arguments;
 
                     const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
+                          products = variables.filter(function (variable) { return variable.origin === func.id; }),
                           hyps = hypotheses.filter(function (hypothesis) { return args.indexOf(hypothesis.id) !== -1; });
 
-                    vars.forEach(function (arg, i, arr) {
+                    vars.concat(products).forEach(function (arg, i, arr) {
                         const categories = hypotheses.filter(function (hypothesis) {
                             return hypothesis.functions.indexOf(func.id) !== -1 ||
                                 hypothesis.models.indexOf(arg.id) !== -1;
@@ -40,10 +41,22 @@ HTMLWidgets.widget({
 
                         func.category = categories.length ? categories[0].name : null;
 
-                        if (arg.precursors.length) {
-                            //TODO: resolve recursively
-                            arg = variables.filter(function (variable) { return variable.id === arg.precursors[0]; })[0]
+                        while (arg.precursors.length || arg.type === "column") {
+                            if (arg.precursors.length) {
+                                arg = variables.filter(function (variable) {
+                                    return variable.id === arg.precursors[0];
+                                })[0]
+
+                            } else if (arg.type === "column") {
+                                arg = variables.filter(function (variable) {
+                                    return variable.columns.indexOf(arg.id) !== -1;
+                                })[0]
+                            }
                         }
+
+                        // If this is a column -- skip
+                        if (variables.filter(function (variable) { return variable.columns.indexOf(arg.id) !== -1; }).length)
+                            return;
 
                         func.breakpoint = func.breakpoint && func.breakpoint === arg.id;
 
