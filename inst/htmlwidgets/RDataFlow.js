@@ -27,7 +27,7 @@ HTMLWidgets.widget({
                 color.domain(d3.map(hypotheses, function(d) { return d.name; }).keys());
 
                 const streams = functions.reduce(function (acc, func, i, arr) {
-                    const args = func.arguments;
+                    const args = func.arguments[0];
 
                     const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
                           products = variables.filter(function (variable) { return variable.origin === func.id; }),
