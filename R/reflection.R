@@ -23,7 +23,8 @@ loop <- function (text) {
   functions <- data.frame(matrix(ncol = 5, nrow = 0));
   colnames(functions) <- c("id", "name", "arguments", "depth", "breakpoint");
 
-  hypotheses <- list();
+  hypotheses <- data.frame(matrix(ncol = 5, nrow = 0));
+  colnames(hypotheses) <- c("id", "name", "columns", "functions", "models");
 
   for (row in exp) {
     if (!is.language(row))
@@ -36,13 +37,10 @@ loop <- function (text) {
 }
 
 
-find_hypothesis <- function (exp, hypitheses, add = FALSE) {
-  hypothesis <- NULL;
-  index <- length(hypitheses) + 1;
-
+find_hypothesis <- function (exp, hypotheses, add = FALSE) {
   if (length(exp) == 3) {
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
-    c(columns, f, h) %<-% recursion(exp[[3]], list(), data.frame(matrix(ncol = 5, nrow = 0)), list(),
+    c(columns, f, h) %<-% recursion(exp[[3]], list(), data.frame(matrix(ncol = 5, nrow = 0)), data.frame(),
                                     lookup_mode = TRUE);
 
     columns = list(
@@ -57,45 +55,46 @@ find_hypothesis <- function (exp, hypitheses, add = FALSE) {
       dependant = NULL,
       control = list(as.character(exp[[2]]))
     )
+
   } else {
     name <- '';
     columns <- NULL;
   }
 
-  if (length(hypitheses) > 0)
-    for (i in 1:length(hypitheses)) {
-      old_hypothesis <- hypitheses[[i]];
+  index <- match(name, hypotheses$name);
 
-      if (old_hypothesis$name == name) {
-        hypothesis <- old_hypothesis;
-        index <- i;
+  if (is.na(index)) {
+    hypothesis <- NULL;
+    index <- nrow(hypotheses) + 1
 
-        break;
-      }
-    }
+  } else {
+    hypothesis <- hypotheses[index, ]
+  }
 
-  if (index > length(hypitheses) && add) {
+  if (index > nrow(hypotheses) && add) {
     hypothesis <- list(
       id =        UUIDgenerate(),
       name =      name,
-      columns =   columns,
-      functions = list(),
-      models =    list()
+      columns =   list(columns),
+      functions = list(list()),
+      models =    list(list())
     );
 
-    hypitheses[[index]] <- hypothesis;
+    hypotheses[index,] <- hypothesis;
   }
 
-  return(list(index, hypitheses))
+  return(list(index, hypotheses))
 }
 
 
 update_hypothesis <- function (hypothesis, variables) {
   for (var in variables) {
-    hypothesis$columns$control <- replace(hypothesis$columns$control, hypothesis$columns$control==var$name, var$id)
+    hypothesis$columns[[1]]$control <- replace(hypothesis$columns[[1]]$control,
+                                               hypothesis$columns[[1]]$control == var$name,
+                                               var$id)
 
-    if (!is.null(hypothesis$columns$dependant) && hypothesis$columns$dependant == var$name) {
-      hypothesis$columns$dependant <- var$id;
+    if (!is.null(hypothesis$columns[[1]]$dependant) && hypothesis$columns[[1]]$dependant == var$name) {
+      hypothesis$columns[[1]]$dependant <- var$id;
     }
   }
 
@@ -154,16 +153,25 @@ recursion <- function (exp, variables, functions, hypotheses,
     before_funcs <- nrow(functions);
 
     # Find the precursors and invoked functions
-    c(precursor_variables, functions, invoked_hypotheses) %<-% recursion(exp[[3]], list(), functions, list(),
-                                                                         assignment_mode = TRUE, depth = depth);
+    c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses,
+                                                       assignment_mode = TRUE, depth = depth);
 
-    # is_mutation <- length(precursor_variables[precursor_variables$name == var_name]) == 0
     is_mutation <- FALSE;
+    precursor_variable_ids <- list();
 
-    for (pre_var in precursor_variables) {
-      if (pre_var$name == var_name) {
-        is_mutation <- TRUE;
-        break;
+    for (variable in variables) {
+      for (func_args in functions[(before_funcs + 1):nrow(functions), ]$arguments) {
+        if (variable$id %in% func_args) {
+          if (variable$type == "column") {
+            # TODO: do smth?
+
+          } else if (variable$name == var_name) {
+            is_mutation <- TRUE;
+
+          } else if (!(variable$id %in% precursor_variable_ids)) {
+            precursor_variable_ids <- append(precursor_variable_ids, variable$id);
+          }
+        }
       }
     }
 
@@ -171,45 +179,39 @@ recursion <- function (exp, variables, functions, hypotheses,
     c(var_index, variables) %<-% find_variable(var_name, variables, add = TRUE, force = !is_mutation);
 
     if (is.null(variables[[var_index]]$origin)) {
-      variables[[var_index]]$origin <- functions$id[nrow(functions)];
+      variables[[var_index]]$origin <- functions[nrow(functions), ]$id;
     }
 
-    new_var_id <- variables[[var_index]]$id;
-
-    # Add the newly gathered data to the larger massif
-    for (pre_var_ in precursor_variables) {
-      c(pre_var_index, variables) %<-% find_variable(pre_var_$name, variables, add = TRUE);
-
-      pre_var <- variables[[pre_var_index]];
-
-      if (pre_var$type == "column") {
-        next;
-      }
-
-      if (pre_var$name == variables[[var_index]]$name) {
-        functions[nrow(functions), ]$breakpoint <- new_var_id;
-      }
-
-      for (i in before_funcs:nrow(functions)) {
-        mutator <- as.list(functions[i, ]);
-
-        mutator$arguments[[1]] <- replace(mutator$arguments[[1]], mutator$arguments[[1]] == pre_var_$id, pre_var$id)
-
-        functions[i, ] <- mutator;
-      }
-
-      if (pre_var$id != new_var_id && !(pre_var$id %in% variables[[var_index]]$precursors)) {
-        variables[[var_index]]$precursors <- append(variables[[var_index]]$precursors, pre_var$id);
-      }
+    if (is_mutation) {
+      functions[nrow(functions), ]$breakpoint <- variables[[var_index]]$id;
     }
 
-    for (hyp in invoked_hypotheses) {
-      c(hyp_index, hypotheses) %<-% find_hypothesis(parse(text=hyp$name)[[1]], hypotheses, add = TRUE);
+    variables[[var_index]]$precursors <- precursor_variable_ids;
 
-      hypotheses[[hyp_index]]$functions <- append(hypotheses[[hyp_index]]$functions, hyp$functions);
+    if (nrow(hypotheses)) {
+      for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
+        selector <- apply(hypotheses, 1, function (hyp) { return(func_id %in% hyp$functions); });
 
-      variables[[var_index]]$type <- "model";
-      hypotheses[[hyp_index]]$models <- append(hypotheses[[hyp_index]]$models, new_var_id);
+        if (nrow(hypotheses[selector, ])) {
+          variables[[var_index]]$type <- "model";
+
+          for (hyp_id in hypotheses[selector, ]$id) {
+            hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
+                                                                        variables[[var_index]]$id)
+          }
+        }
+
+        func_args = functions[functions$id == func_id, ]$arguments[[1]];
+
+        if (nrow(hypotheses[hypotheses$id %in% func_args, ])) {
+          variables[[var_index]]$type <- "model";
+
+          for (hyp_id in hypotheses[hypotheses$id %in% func_args, ]$id) {
+            hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
+                                                                        variables[[var_index]]$id)
+          }
+        }
+      }
     }
 
   # # Is "[" call
@@ -220,7 +222,7 @@ recursion <- function (exp, variables, functions, hypotheses,
   # Is "$" call
   } else if (is.call(exp) && identical(exp[[1]], quote(`$`))) {
     if (is.call(exp[[2]])) {
-      # data[data$col1 == value]$col2
+      # data[data$col1 == value, ]$col2
       if (identical(exp[[2]][[1]], quote(`[`))) {
         # data
         c(var_index, variables) %<-% find_variable(as.character(exp[[2]][[2]]), variables,
@@ -255,9 +257,9 @@ recursion <- function (exp, variables, functions, hypotheses,
         formula <- paste0(c(variables[[col_index]]$name, '~', variables[[col2_index]]$name), collapse = ' ');
 
         c(hyp_index, hypotheses) %<-% find_hypothesis(parse(text = formula)[[1]], hypotheses,
-                                                    add = TRUE);
+                                                      add = TRUE);
 
-        hypotheses[[hyp_index]] <- update_hypothesis(hypotheses[[hyp_index]], variables);
+        hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
 
         func <- list(
           id =          UUIDgenerate(),
@@ -266,6 +268,8 @@ recursion <- function (exp, variables, functions, hypotheses,
           depth =       depth - assignment_mode,
           breakpoint =  NA
         );
+
+        hypotheses[hyp_index, ]$functions[[1]] <- append(hypotheses[hyp_index, ]$functions[[1]], func$id);
 
         functions[nrow(functions) + 1, ] <- func;
 
@@ -356,10 +360,13 @@ recursion <- function (exp, variables, functions, hypotheses,
         } else if (is.call(arg) && identical(arg[[1]], quote(`~`))) {
           c(hyp_index, hypotheses) %<-% find_hypothesis(arg, hypotheses, add = TRUE);
 
-          hypotheses[[hyp_index]] <- update_hypothesis(hypotheses[[hyp_index]], variables);
+          hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
 
-          func$arguments <- append(func$arguments, hypotheses[[hyp_index]]$id);
-          hypotheses[[hyp_index]]$functions = append(hypotheses[[hyp_index]]$functions, func$id);
+          func$arguments <- append(func$arguments, hypotheses[hyp_index,]$id);
+          hypotheses[hyp_index,]$functions[[1]] = append(hypotheses[hyp_index,]$functions[[1]], func$id);
+
+        # TODO: unwrap the c(...) and list(...)
+        # } else if (is.call(arg) && (identical(arg[[1]], quote(`c`)) || identical(arg[[1]], quote(`list`)))) {
 
         } else {
           before_funcs <- nrow(functions);
@@ -373,7 +380,8 @@ recursion <- function (exp, variables, functions, hypotheses,
         }
       }
 
-      if (func$depth == 1 && length(hypotheses)) {
+      # TODO: improve the hypothesis selection
+      if (nrow(hypotheses)) {
         col_ids <- list();
 
         for (var in variables) {
@@ -383,15 +391,15 @@ recursion <- function (exp, variables, functions, hypotheses,
         }
 
         if (length(col_ids)) {
-          for (hyp_index in 1:length(hypotheses)) {
-            hypothesis <- hypotheses[[hyp_index]];
+          for (hyp_index in 1:nrow(hypotheses)) {
+            hypothesis <- as.list(hypotheses[hyp_index, ]);
 
-            columns <- append(hypothesis$columns$control, hypothesis$columns$dependant);
+            columns <- append(hypothesis$columns[[1]]$control, hypothesis$columns[[1]]$dependant);
 
             if (length(setdiff(columns, col_ids)) == 0) {
-              hypothesis$functions <- append(hypothesis$functions, func$id);
+              hypothesis$functions[[1]] <- append(hypothesis$functions[[1]], func$id);
 
-              hypotheses[[hyp_index]] <- hypothesis;
+              hypotheses[hyp_index, ] <- hypothesis;
               break;
             }
           }
@@ -452,7 +460,7 @@ addin <- function() {
               RDataFlow(list(
                 variables = variables,
                 functions = unname(apply(functions, 1, as.list)),
-                hypotheses = hypotheses
+                hypotheses = unname(apply(hypotheses, 1, as.list))
               ))
             })
 

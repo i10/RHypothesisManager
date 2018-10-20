@@ -19,8 +19,8 @@ HTMLWidgets.widget({
                 });
 
                 const variables = x.variables,
-                    functions = x.functions,
-                    hypotheses = x.hypotheses;
+                      functions = x.functions,
+                      hypotheses = x.hypotheses;
 
                 const color = d3.scaleOrdinal(d3.schemeCategory10);
 
@@ -42,9 +42,9 @@ HTMLWidgets.widget({
                         return acc;
                     }
 
-                    function rec (acc, arg, i, arr) {
+                    function argument_recursion (acc, arg, i, arr) {
                         if (arg instanceof Object) {
-                            return arg.arguments.reduce(rec, acc);
+                            return arg.arguments.reduce(argument_recursion, acc);
                         }
 
                         acc.push(arg);
@@ -52,7 +52,18 @@ HTMLWidgets.widget({
                         return acc;
                     }
 
-                    const args = func.arguments.reduce(rec, []);
+                    function func_id_recursion (acc, arg, i, arr) {
+                        if (arg instanceof Object) {
+                            acc.push(arg.id);
+
+                            arg.arguments.reduce(func_id_recursion, acc);
+                        }
+
+                        return acc;
+                    }
+
+                    const args = func.arguments.reduce(argument_recursion, []),
+                          nested_func_ids = func.arguments.reduce(func_id_recursion, []);
 
                     const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
                           products = variables.filter(function (variable) { return variable.origin === func.id; }),
@@ -61,6 +72,7 @@ HTMLWidgets.widget({
                     vars.concat(products).forEach(function (arg, i, arr) {
                         const categories = hypotheses.filter(function (hypothesis) {
                             return hypothesis.functions.indexOf(func.id) !== -1 ||
+                                nested_func_ids.filter(function (func_id) { return hypothesis.functions.indexOf(func_id) !== -1; }).length ||
                                 hypothesis.models.indexOf(arg.id) !== -1;
                         });
 
@@ -83,7 +95,7 @@ HTMLWidgets.widget({
                         if (variables.filter(function (variable) { return variable.columns.indexOf(arg.id) !== -1; }).length)
                             return;
 
-                        func.breakpoint = func.breakpoint && func.breakpoint === arg.id;
+                        func.breakpoint = func.breakpoint === true || (func.breakpoint && func.breakpoint === arg.id);
 
                         var stream = acc.filter(function (stream) { return stream.name === arg.name; });
 
