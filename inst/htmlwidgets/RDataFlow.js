@@ -27,7 +27,32 @@ HTMLWidgets.widget({
                 color.domain(d3.map(hypotheses, function(d) { return d.name; }).keys());
 
                 const streams = functions.reduce(function (acc, func, i, arr) {
-                    const args = func.arguments[0];
+                    const nested_functions = functions.filter(function (n_func) { return func.arguments.indexOf(n_func.id) !== -1; });
+
+                    func.arguments = func.arguments.map(function (arg) {
+                        const ff = nested_functions.filter(function (func) { return func.id === arg; });
+
+                        if (ff.length)
+                            return ff[0];
+
+                        return arg;
+                    });
+
+                    if (func.depth !== 1) {
+                        return acc;
+                    }
+
+                    function rec (acc, arg, i, arr) {
+                        if (arg instanceof Object) {
+                            return arg.arguments.reduce(rec, acc);
+                        }
+
+                        acc.push(arg);
+
+                        return acc;
+                    }
+
+                    const args = func.arguments.reduce(rec, []);
 
                     const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
                           products = variables.filter(function (variable) { return variable.origin === func.id; }),
