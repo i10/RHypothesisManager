@@ -132,6 +132,53 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE) {
   return(list(index, variables))
 }
 
+argument_recursion <- function (args, func,
+                                variables, functions, hypotheses,
+                                depth, assignment_mode = FALSE) {
+  for (arg in args) {
+    if (missing(arg)) {
+
+    } else if (is.atomic(arg)) {
+      func$arguments <- append(func$arguments, arg)
+
+    } else if (is.name(arg)) {
+      c(var_index, variables) %<-% find_variable(as.character(arg), variables,
+                                                 add = assignment_mode);
+
+      if (var_index <= length(variables)) {
+        # variables[[var_index]]$functions = append(variables[[var_index]]$functions, func$id)
+
+        func$arguments <- append(func$arguments, variables[[var_index]]$id)
+      }
+
+    } else if (is.call(arg) && identical(arg[[1]], quote(`~`))) {
+      c(hyp_index, hypotheses) %<-% find_hypothesis(arg, hypotheses, add = TRUE);
+
+      hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
+
+      func$arguments <- append(func$arguments, hypotheses[hyp_index,]$id);
+      hypotheses[hyp_index,]$functions[[1]] = append(hypotheses[hyp_index,]$functions[[1]], func$id);
+
+    } else if (is.call(arg) && (identical(arg[[1]], quote(`c`)) || identical(arg[[1]], quote(`list`)))) {
+      c(func, variables, functions, hypotheses) %<-% argument_recursion(as.list(arg)[2:length(arg)], func,
+                                                                        variables, functions, hypotheses,
+                                                                        depth, assignment_mode = assignment_mode)
+
+    } else {
+      before_funcs <- nrow(functions);
+
+      c(variables, functions, hypotheses) %<-% recursion(arg, variables, functions, hypotheses,
+                                                         assignment_mode = assignment_mode, depth = depth);
+
+      if (nrow(functions) != before_funcs) {
+        func$arguments <- append(func$arguments, functions[nrow(functions), ]$id);
+      }
+    }
+  }
+
+  return(list(func, variables, functions, hypotheses))
+}
+
 
 recursion <- function (exp, variables, functions, hypotheses,
                        assignment_mode = FALSE, lookup_mode = FALSE,
@@ -341,44 +388,9 @@ recursion <- function (exp, variables, functions, hypotheses,
     );
 
     if (length(exp) > 1) {
-      for (arg in as.list(exp)[2:length(exp)]) {
-        if (missing(arg)) {
-
-        } else if (is.atomic(arg)) {
-          func$arguments <- append(func$arguments, arg)
-
-        } else if (is.name(arg)) {
-          c(var_index, variables) %<-% find_variable(as.character(arg), variables,
-                                                     add = assignment_mode);
-
-          if (var_index <= length(variables)) {
-            # variables[[var_index]]$functions = append(variables[[var_index]]$functions, func$id)
-
-            func$arguments <- append(func$arguments, variables[[var_index]]$id)
-          }
-
-        } else if (is.call(arg) && identical(arg[[1]], quote(`~`))) {
-          c(hyp_index, hypotheses) %<-% find_hypothesis(arg, hypotheses, add = TRUE);
-
-          hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
-
-          func$arguments <- append(func$arguments, hypotheses[hyp_index,]$id);
-          hypotheses[hyp_index,]$functions[[1]] = append(hypotheses[hyp_index,]$functions[[1]], func$id);
-
-        # TODO: unwrap the c(...) and list(...)
-        # } else if (is.call(arg) && (identical(arg[[1]], quote(`c`)) || identical(arg[[1]], quote(`list`)))) {
-
-        } else {
-          before_funcs <- nrow(functions);
-
-          c(variables, functions, hypotheses) %<-% recursion(arg, variables, functions, hypotheses,
-                                                             assignment_mode = assignment_mode, depth = depth);
-
-          if (nrow(functions) != before_funcs) {
-            func$arguments <- append(func$arguments, functions[nrow(functions), ]$id);
-          }
-        }
-      }
+      c(func, variables, functions, hypotheses) %<-% argument_recursion(as.list(exp)[2:length(exp)], func,
+                                                                        variables, functions, hypotheses,
+                                                                        depth = depth, assignment_mode=assignment_mode);
 
       # TODO: improve the hypothesis selection
       if (nrow(hypotheses)) {
