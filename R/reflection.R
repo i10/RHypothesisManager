@@ -102,7 +102,7 @@ update_hypothesis <- function (hypothesis, variables) {
 }
 
 
-find_variable <- function (name, variables, add = FALSE, force = FALSE) {
+find_variable <- function (name, variables, add = FALSE, force = FALSE, type_constraint = NULL) {
   var <- NULL;
   index <- length(variables) + 1;
 
@@ -110,7 +110,7 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE) {
     for (i in 1:length(variables)) {
       old_var <- variables[[i]];
 
-      if (old_var$name == name) {
+      if (old_var$name == name && (is.null(type_constraint) || any(old_var$type == type_constraint))) {
         var <- old_var;
         index <- i;
       }
@@ -223,7 +223,8 @@ recursion <- function (exp, variables, functions, hypotheses,
     }
 
     # Get or create the variable
-    c(var_index, variables) %<-% find_variable(var_name, variables, add = TRUE, force = !is_mutation);
+    c(var_index, variables) %<-% find_variable(var_name, variables, add = TRUE, force = !is_mutation,
+                                               type_constraint = c("data", "model", "constant"));
 
     if (is.null(variables[[var_index]]$origin)) {
       variables[[var_index]]$origin <- functions[nrow(functions), ]$id;
@@ -273,14 +274,16 @@ recursion <- function (exp, variables, functions, hypotheses,
       if (identical(exp[[2]][[1]], quote(`[`))) {
         # data
         c(var_index, variables) %<-% find_variable(as.character(exp[[2]][[2]]), variables,
-                                                   add = TRUE);
+                                                   add = TRUE,
+                                                   type_constraint = "data");
 
         do_force_add <- !length(variables[[var_index]]$columns);
 
         # col2
         c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
                                                    add = TRUE,
-                                                   force = do_force_add);
+                                                   force = do_force_add,
+                                                   type_constraint = "column");
 
         variables[[col_index]]$type <- "column";
 
@@ -329,11 +332,13 @@ recursion <- function (exp, variables, functions, hypotheses,
     # data$column
     } else {
       c(var_index, variables) %<-% find_variable(as.character(exp[[2]]), variables,
-                                                 add = assignment_mode);
+                                                 add = assignment_mode || lookup_mode,
+                                                 type_constraint = c("data", "model", "constant"));
 
       c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
                                                  add = TRUE,
-                                                 force = !length(variables[[var_index]]$columns));
+                                                 force = !length(variables[[var_index]]$columns),
+                                                 type_constraint = "column");
 
       variables[[col_index]]$type <- "column";
 
