@@ -73,7 +73,7 @@ find_hypothesis <- function (exp, hypotheses, add = FALSE) {
 
   if (index > nrow(hypotheses) && add) {
     hypothesis <- list(
-      id =        UUIDgenerate(),
+      id =        paste0(c("h", UUIDgenerate()), collapse = "-"),
       name =      name,
       columns =   list(columns),
       functions = list(list()),
@@ -118,7 +118,7 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE) {
 
   if (index > length(variables) && add) {
     var <- list(
-      id =          UUIDgenerate(),
+      id =          paste0(c("v", UUIDgenerate()), collapse = "-"),
       name =        name,
       precursors =  list(),
       columns =     list(),
@@ -309,7 +309,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
 
         func <- list(
-          id =          UUIDgenerate(),
+          id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
           name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
           arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id, variables[[col2_index]]$id)),
           depth =       depth - assignment_mode,
@@ -342,7 +342,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       }
 
       func <- list(
-        id =          UUIDgenerate(),
+        id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
         name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
         arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
         depth =       depth - assignment_mode,
@@ -379,9 +379,16 @@ recursion <- function (exp, variables, functions, hypotheses,
 
   # Is a generic function call
   } else if (is.call(exp)) {
+    if (is.call(exp[[1]])) {
+      func_name <- paste0(as.character(exp[[1]])[c(2, 1, 3)], collapse = "");
+
+    } else {
+      func_name <- as.character(exp[[1]]);
+    }
+
     func <- list(
-      id =          UUIDgenerate(),
-      name =        as.character(exp[[1]]),
+      id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
+      name =        func_name,
       arguments =   list(),
       depth =       depth - assignment_mode,
       breakpoint =  NA
