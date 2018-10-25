@@ -191,7 +191,13 @@ recursion <- function (exp, variables, functions, hypotheses,
       c(variables, tmp, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
                                                    assignment_mode = TRUE, depth = depth)
 
-      var_name <- as.character(exp[[2]][[2]]);
+      var_name <- exp[[2]];
+
+      while (!is.name(var_name)) {
+        var_name <- var_name[[2]];
+      }
+
+      var_name <- as.character(var_name);
 
     } else {
       var_name <- as.character(exp[[2]]);
