@@ -393,6 +393,14 @@ recursion <- function (exp, variables, functions, hypotheses,
   } else if (is.call(exp) && identical(exp[[1]], quote(`library`))) {
     # Skip retrievals of property
 
+  # Is library name call
+  } else if (is.call(exp) && identical(exp[[1]], quote(`::`))) {
+    # Shouldn't really ever pop up
+
+  # Is paranthesis (?!)
+  } else if (is.call(exp) && identical(exp[[1]], quote(`(`))) {
+    c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses, depth = depth);
+
   # Is if/for clause
   } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)))) {
     # TODO: add conditional as the precursor?
