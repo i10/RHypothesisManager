@@ -13,6 +13,12 @@ HTMLWidgets.widget({
 
                 const defs = svg.append("defs");
 
+                d3.select(".tooltip").remove();
+
+                const tooltip = d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0);
+
                 svg.attrs({
                     "width": width,
                     "height": height
@@ -27,23 +33,46 @@ HTMLWidgets.widget({
                 color.domain(d3.map(hypotheses, function(d) { return d.name; }).keys());
 
                 const streams = functions.reduce(function (acc, func, i, arr) {
-                    const nested_functions = functions.filter(function (n_func) { return func.arguments.indexOf(n_func.id) !== -1; });
+                    // Scope reduction
+                    const arg_functions = functions.filter(function(f, ii) { return ii < i; }).filter(function (f) { return func.arguments.indexOf(f.id) !== -1; }),
+                          arg_variables = variables.filter(function (v) { return func.arguments.indexOf(v.id) !== -1; }),
+                          arg_hypotheses = hypotheses.filter(function (h) { return func.arguments.indexOf(h.id) !== -1; });
 
+                    // Replacement of the arguments in a list with the appropriate entities
                     func.arguments = func.arguments.map(function (arg) {
-                        const ff = nested_functions.filter(function (func) { return func.id === arg; });
+                        const f = arg_functions.reduce(function (acc, f) { return f.id === arg ? f : acc; }, null),
+                              v = arg_variables.reduce(function (acc, v) { return v.id === arg ? v : acc; }, null),
+                              h = arg_hypotheses.reduce(function (acc, h) { return h.id === arg ? h : acc; }, null);
 
-                        if (ff.length)
-                            return ff[0];
+                        if (f !== null)
+                            return f;
+
+                        if (v !== null)
+                            return v;
+
+                        if (h !== null)
+                            return h;
 
                         return arg;
                     });
 
+                    const own_categories = hypotheses
+                              .filter(function (h) { return h.functions.indexOf(func.id) !== -1 ||
+                                                            arg_variables.reduce(function(acc, v) { return acc || (h.models.indexOf(v.id) !== -1); }, false); }),
+                          child_categories = arg_functions
+                              .reduce(function (acc, f) { return acc.concat(f.categories); }, []);
+
+                    func.categories = own_categories.concat(child_categories);
+
+                    // Since the nested function won't be showing up on the top level,
+                    //     we can interrupt here and use the accumulated stuff further on
+                    //     when the top-level function is invoked
                     if (func.depth !== 1) {
                         return acc;
                     }
 
                     function argument_recursion (acc, arg, i, arr) {
-                        if (arg instanceof Object) {
+                        if ((arg instanceof Object) && arg.id[0] === "f") {
                             return arg.arguments.reduce(argument_recursion, acc);
                         }
 
@@ -52,80 +81,73 @@ HTMLWidgets.widget({
                         return acc;
                     }
 
-                    function func_id_recursion (acc, arg, i, arr) {
-                        if (arg instanceof Object) {
-                            acc.push(arg.id);
 
-                            arg.arguments.reduce(func_id_recursion, acc);
-                        }
 
-                        return acc;
-                    }
+                    const args = func.arguments.reduce(argument_recursion, []);
 
-                    const args = func.arguments.reduce(argument_recursion, []),
-                          nested_func_ids = func.arguments.reduce(func_id_recursion, []);
+                    const products = variables.filter(function (v) { return v.origin === func.id; });
 
-                    const vars = variables.filter(function (variable) { return args.indexOf(variable.id) !== -1; }),
-                          products = variables.filter(function (variable) { return variable.origin === func.id; }),
-                          hyps = hypotheses.filter(function (hypothesis) { return args.indexOf(hypothesis.id) !== -1; });
+                    const vars = args
+                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
+                        .concat(products)
+                        .reduce(function (acc, arg, i, arr) {
 
-                    vars.concat(products).forEach(function (arg, i, arr) {
-                        const categories = hypotheses.filter(function (hypothesis) {
-                            return hypothesis.functions.indexOf(func.id) !== -1 ||
-                                nested_func_ids.filter(function (func_id) { return hypothesis.functions.indexOf(func_id) !== -1; }).length ||
-                                hypothesis.models.indexOf(arg.id) !== -1;
-                        });
+                            while (true) {
+                                if (arg.precursors.length) {
+                                    // First of the precursors because otherwise too complicated
+                                    arg = variables.filter(function (v) { return arg.precursors.indexOf(v.id) !== -1; })[0]
 
-                        func.category = categories.length ? categories[0].name : null;
+                                } else if (arg.type === "column") {
+                                    var tmp = variables.reduce(function (acc, v) { return v.columns.indexOf(arg.id) !== -1 ? v : acc; }, null);
+                                    if (tmp !== null)
+                                        arg = tmp;
 
-                        while (arg.precursors.length || arg.type === "column") {
-                            if (arg.precursors.length) {
-                                arg = variables.filter(function (variable) {
-                                    return variable.id === arg.precursors[0];
-                                })[0]
-
-                            } else if (arg.type === "column") {
-                                arg = variables.filter(function (variable) {
-                                    return variable.columns.indexOf(arg.id) !== -1;
-                                })[0]
+                                } else {
+                                    break;
+                                }
                             }
-                        }
 
-                        // If this is a column -- skip
-                        if (variables.filter(function (variable) { return variable.columns.indexOf(arg.id) !== -1; }).length)
-                            return;
+                            if (acc.reduce(function (acc, v) { return  acc && (v.id !== arg.id); }, true)) {
+                                acc.push(arg);
+                            }
 
-                        func.breakpoint = func.breakpoint === true || (func.breakpoint && func.breakpoint === arg.id);
+                            return acc;
+                        }, [])
+                        .filter(function (arg) { return arg.type === "data"; });
 
-                        var stream = acc.filter(function (stream) { return stream.name === arg.name; });
+                    func.breakpoint = vars.reduce(function (acc, arg) { return acc || func.breakpoint === arg.id }, false);
 
-                        if (!stream.length) {
+                    // Stream-work
+                    vars.forEach(function (arg, i, arr) {
+                        var stream = acc.reduce(function (acc, stream) { return stream.id === arg.id ? stream : acc; }, null);
+
+                        // Cloning because stream overlaps
+                        const notch = JSON.parse(JSON.stringify(func));
+                        notch.parent = null;
+
+                        if (stream === null) {
                             stream = {
                                 name: arg.name,
-                                // id: arg.id,
+                                id: arg.id,
                                 functions: []
                             };
 
                             acc.push(stream);
-                            func.parent = null;
 
                         } else {
-                            stream = stream[0];
-
-                            if (stream.functions.filter(function(ffunc) { return ffunc.id === func.id; }).length)
-                                return;
-
-                            func.parent = stream.functions
-                                .filter(function(notch, i, arr) {
+                            notch.parent = stream.functions
+                                .filter(function(old_notch, i, arr) {
                                     return (i === 0) ||
-                                        notch.breakpoint ||
-                                        (notch.category === func.category);
+                                        old_notch.breakpoint ||
+                                        (!old_notch.categories.length && !notch.categories.length) ||
+                                        (old_notch.categories.length && notch.categories.length &&
+                                         old_notch.categories[0].id === notch.categories[0].id);
                                 })
                                 .reverse()
                                 [0].id;
                         }
 
-                        stream.functions.push(func);
+                        stream.functions.push(notch);
                     });
 
                     return acc;
@@ -178,10 +200,13 @@ HTMLWidgets.widget({
                         .data(nodes.descendants())
                         .enter().append("g")
                         .attr("class", function (d) {
+                            const func = d.data.data;
+
                             return [
                                 "node",
                                 (d.children ? "node--internal" : "node--leaf"),
-                                d.data.data.breakpoint? "breakpoint" : ""
+                                (func.breakpoint ? "breakpoint" : ""),
+                                (func.model_name ? "model_node" : "")
                             ].join(" ");
                         })
                         .attr("transform", function (d) {
@@ -192,12 +217,16 @@ HTMLWidgets.widget({
                     node.append("circle")
                         .attr("r", 5)
                         .style("fill", function (d) {
-                            if (d.data.data.category)
-                                return color(d.data.data.category);
+                            const func = d.data.data;
+
+                            if (func.categories.length)
+                                return color(func.categories[0].name);
                         })
                         .style("stroke", function (d) {
-                            if (!d.data.data.breakpoint && d.data.data.category)
-                                return color(d.data.data.category);
+                            const func = d.data.data;
+
+                            if (!func.breakpoint /*&& !d.data.data.model_name*/ && func.categories.length)
+                                return color(func.categories[0].name);
                         });
 
                     node.append("text")
@@ -205,33 +234,65 @@ HTMLWidgets.widget({
                             dy: ".35em",
                             x: 10
                         })
-                        .style("text-anchor", "left")
+                        .style("text-anchor", "start")
+                        .on("mouseover", function(d) {
+                            const func = d.data.data;
+
+                            const arguments = func.arguments.reduce(function (acc, e) {
+                                if (e instanceof Object) {
+                                    var name = e.name;
+
+                                    // if (name.length > 20)
+                                    //     name = name.substr(0, 20) + "&hellip;";
+
+                                    acc.push(name);
+
+                                } else if (/*e instanceof String*/ (typeof e) === "string") {
+                                    acc.push("\"" + e + "\"")
+
+                                } else {
+                                    acc.push(e);
+                                }
+
+                                return acc;
+                            }, []);
+
+                            tooltip
+                                .style("opacity", 0.9)
+                                .html(func.name + "(" + arguments.join(",<br />" + Array(func.name.length + 2).join(" ")) + ")")
+                                .style("left", (d3.event.pageX) + "px")
+                                .style("top", (d3.event.pageY - 28) + "px");
+                        })
+                        .on("mouseout", function(d) {
+                            tooltip.style("opactiy", 0);
+                        })
                         .text(function (d) {
-                            return d.data.data.name;
+                            const func = d.data.data;
+                            return func.name;
                         });
-
-                    var legend = svg.append("g")
-                        .selectAll(".legend")
-                        .data(color.domain())
-                        .enter().append("g")
-                        .attr("class", "legend")
-                        .attr("transform", function (d, i) { return "translate(0," + i * 20 + ")"; });
-
-                    // draw legend colored rectangles
-                    legend.append("rect")
-                        .attr("x",      width - 18)
-                        .attr("width",  18)
-                        .attr("height", 18)
-                        .style("fill",  color);
-
-                    // draw legend text
-                    legend.append("text")
-                        .attr("x",      width - 24)
-                        .attr("y",      9)
-                        .attr("dy",     ".35em")
-                        .style("text-anchor", "end")
-                        .text(function (d) { return d; });
                 });
+
+                const legend = svg.append("g")
+                    .selectAll(".legend")
+                    .data(color.domain())
+                    .enter().append("g")
+                    .attr("class", "legend")
+                    .attr("transform", function (d, i) { return "translate(0," + i * 20 + ")"; });
+
+                // draw legend colored rectangles
+                legend.append("rect")
+                    .attr("x",      width - 18)
+                    .attr("width",  18)
+                    .attr("height", 18)
+                    .style("fill",  color);
+
+                // draw legend text
+                legend.append("text")
+                    .attr("x",      width - 24)
+                    .attr("y",      9)
+                    .attr("dy",     ".35em")
+                    .style("text-anchor", "end")
+                    .text(function (d) { return d; });
             },
 
             resize: function (width, height) {

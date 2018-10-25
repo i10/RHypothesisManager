@@ -15,7 +15,21 @@
     stroke-width: 2px;
 }
 
+.node.model_node circle {
+    stroke: #999999;
+}
+
+.node.model_node text {
+    stroke: black;
+}
+
 text {
     font: 12px sans-serif;
-    stroke: black;
+    stroke: #444444;
+}
+
+.tooltip {
+    background: #fd7;
+    white-space: pre !important;
+    font-family: monospace !important;
 }
