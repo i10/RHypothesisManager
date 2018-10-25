@@ -298,19 +298,35 @@ recursion <- function (exp, variables, functions, hypotheses,
         }
 
         # data$col1 == value
-        # c(variables, functions, hypotheses) %<-% recursion(exp[[2]][[3]], variables, functions, hypotheses,
-        #                                                    assignment_mode = assignment_mode, depth = depth);
-        c(col2_index, variables) %<-% find_variable(as.character(exp[[2]][[3]][[2]][[3]]), variables,
-                                                    add = TRUE,
-                                                    force <- do_force_add);
+        before_funcs <- nrow(functions);
 
-        variables[[col2_index]]$type <- "column";
+        c(variables, f, hypotheses) %<-% recursion(exp[[2]][[3]], variables, functions, hypotheses,
+                                                   assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
 
-        if (!(variables[[col2_index]]$id %in% variables[[var_index]]$columns)) {
-          variables[[var_index]]$columns <- append(variables[[var_index]]$columns, variables[[col2_index]]$id);
+        columns <- list()
+
+        for (func_args in f[(before_funcs + 1):nrow(f), ]$arguments) {
+          for (arg in func_args) {
+            for (var in variables) {
+              if (var$id == arg && var$type == "column") {
+                columns[[length(columns) + 1]] <- var;
+                break;
+              }
+            }
+          }
         }
 
-        formula <- paste0(c(variables[[col_index]]$name, '~', variables[[col2_index]]$name), collapse = ' ');
+        formula <- paste0(
+          c(
+            variables[[col_index]]$name,
+            '~',
+            paste0(
+              lapply(columns, function(var) { return(var$name); }),
+              collapse = ' + '
+            )
+          ),
+          collapse = ' '
+        );
 
         c(hyp_index, hypotheses) %<-% find_hypothesis(parse(text = formula)[[1]], hypotheses,
                                                       add = TRUE);
@@ -320,7 +336,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         func <- list(
           id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
           name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
-          arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id, variables[[col2_index]]$id)),
+          arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
           depth =       depth - assignment_mode,
           breakpoint =  NA
         );
