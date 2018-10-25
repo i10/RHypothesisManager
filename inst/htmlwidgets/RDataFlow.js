@@ -81,11 +81,14 @@ HTMLWidgets.widget({
                         return acc;
                     }
 
-
-
                     const args = func.arguments.reduce(argument_recursion, []);
 
                     const products = variables.filter(function (v) { return v.origin === func.id; });
+
+                    func.model_name = args.concat(products)
+                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v" && arg.type === "model"; })
+                        .map(function (arg) { return arg.name })
+                        .reduce(function (acc, arg) { return acc && acc !== arg ? "…" : arg; }, null);
 
                     const vars = args
                         .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
@@ -269,6 +272,17 @@ HTMLWidgets.widget({
                         .text(function (d) {
                             const func = d.data.data;
                             return func.name;
+                        });
+
+                    node.append("text")
+                        .attrs({
+                            dy: ".35em",
+                            x: -10
+                        })
+                        .style("text-anchor", "end")
+                        .text(function (d) {
+                            const func = d.data.data;
+                            return func.model_name;
                         });
                 });
 
