@@ -38,22 +38,28 @@ loop <- function (text) {
 
 
 find_hypothesis <- function (exp, hypotheses, add = FALSE) {
+  f <- data.frame(matrix(ncol = 5, nrow = 0));
+
+  c(con_columns, f, h) %<-% recursion(exp[[length(exp)]], list(), f, data.frame(),
+                                      lookup_mode = TRUE)
+
   if (length(exp) == 3) {
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
-    c(columns, f, h) %<-% recursion(exp[[3]], list(), data.frame(matrix(ncol = 5, nrow = 0)), data.frame(),
-                                    lookup_mode = TRUE);
 
-    columns = list(
-      dependant = as.character(exp[[2]]),
-      control = lapply(columns, function(column) {return(column$name)})
+    c(dep_columns, f, h) %<-% recursion(exp[[2]], list(), f, data.frame(),
+                                        lookup_mode = TRUE)
+
+    columns <- list(
+      dependant = dep_columns[[length(dep_columns)]]$name,
+      control = lapply(con_columns, function(column) { return(column$name); })
     )
 
   } else if (length(exp) == 2) {
     name <- paste0(exp, collapse = '');
 
-    columns = list(
+    columns <- list(
       dependant = NULL,
-      control = list(as.character(exp[[2]]))
+      control = lapply(con_columns, function(column) { return(column$name); })
     )
 
   } else {
@@ -180,6 +186,98 @@ argument_recursion <- function (args, func,
 }
 
 
+hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
+                                   assignment_mode = FALSE, lookup_mode = FALSE,
+                                   depth = 0) {
+
+  # data[data$col1 == value, ]$col2
+  if (identical(exp[[1]], quote(`$`))) {
+    data_name <- as.character(exp[[2]][[2]]);
+    col2_name <- as.character(exp[[3]]);
+    lookup <- exp[[2]][[3]];
+
+  # data[data$col1 == value, "col2"]
+  } else if (identical(exp[[1]], quote(`[`)) && is.character(exp[[4]])) {
+    data_name <- as.character(exp[[2]]);
+    col2_name <- exp[[4]];
+    lookup <- exp[[3]];
+
+  } else {
+    return(list(variables, functions, hypotheses));
+  }
+
+  # data
+  c(var_index, variables) %<-% find_variable(data_name, variables,
+                                             add = TRUE,
+                                             type_constraint = "data");
+
+  do_force_add <- !length(variables[[var_index]]$columns);
+
+  # col2
+  c(col_index, variables) %<-% find_variable(col2_name, variables,
+                                             add = TRUE,
+                                             force = do_force_add,
+                                             type_constraint = "column");
+
+  variables[[col_index]]$type <- "column";
+
+  if (!(variables[[col_index]]$id %in% variables[[var_index]]$columns)) {
+    variables[[var_index]]$columns <- append(variables[[var_index]]$columns, variables[[col_index]]$id);
+  }
+
+  # data$col1 == value
+  before_funcs <- nrow(functions);
+
+  c(variables, f, hypotheses) %<-% recursion(lookup, variables, functions, hypotheses,
+                                             assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+
+  columns <- list()
+
+  for (func_args in f[(before_funcs + 1):nrow(f), ]$arguments) {
+    for (arg in func_args) {
+      for (var in variables) {
+        if (var$id == arg && var$type == "column") {
+          columns[[length(columns) + 1]] <- var;
+          break;
+        }
+      }
+    }
+  }
+
+  formula <- paste0(
+    c(
+      variables[[col_index]]$name,
+      '~',
+      paste0(
+        lapply(columns, function(var) { return(var$name); }),
+        collapse = ' + '
+      )
+    ),
+    collapse = ' '
+  );
+
+  formula <- parse(text=formula)[[1]];
+
+  c(hyp_index, hypotheses) %<-% find_hypothesis(formula, hypotheses, add = TRUE);
+
+  hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
+
+  func <- list(
+    id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
+    name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
+    arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
+    depth =       depth - assignment_mode,
+    breakpoint =  NA
+  );
+
+  hypotheses[hyp_index, ]$functions[[1]] <- append(hypotheses[hyp_index, ]$functions[[1]], func$id);
+
+  functions[nrow(functions) + 1, ] <- func;
+
+  return(list(variables, functions, hypotheses));
+}
+
+
 recursion <- function (exp, variables, functions, hypotheses,
                        assignment_mode = FALSE, lookup_mode = FALSE,
                        depth = 0) {
@@ -268,82 +366,25 @@ recursion <- function (exp, variables, functions, hypotheses,
       }
     }
 
-  # # Is "[" call
-  # } else if (is.call(exp) && identical(exp[[1]], quote(`[`))) {
-  #   c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
-  #                                                      assignment_mode = assignment_mode, depth = depth);
-  #
+  # Is "[" call
+  } else if (is.call(exp) && identical(exp[[1]], quote(`[`))) {
+    # data[data$col1 == value, "col2"]
+    if (length(exp) == 4) {
+      c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
+                                                                     assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+
+    } else {
+      c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
+                                                         assignment_mode = assignment_mode, depth = depth);
+    }
+
   # Is "$" call
   } else if (is.call(exp) && identical(exp[[1]], quote(`$`))) {
     if (is.call(exp[[2]])) {
       # data[data$col1 == value, ]$col2
       if (identical(exp[[2]][[1]], quote(`[`))) {
-        # data
-        c(var_index, variables) %<-% find_variable(as.character(exp[[2]][[2]]), variables,
-                                                   add = TRUE,
-                                                   type_constraint = "data");
-
-        do_force_add <- !length(variables[[var_index]]$columns);
-
-        # col2
-        c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
-                                                   add = TRUE,
-                                                   force = do_force_add,
-                                                   type_constraint = "column");
-
-        variables[[col_index]]$type <- "column";
-
-        if (!(variables[[col_index]]$id %in% variables[[var_index]]$columns)) {
-          variables[[var_index]]$columns <- append(variables[[var_index]]$columns, variables[[col_index]]$id);
-        }
-
-        # data$col1 == value
-        before_funcs <- nrow(functions);
-
-        c(variables, f, hypotheses) %<-% recursion(exp[[2]][[3]], variables, functions, hypotheses,
-                                                   assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
-
-        columns <- list()
-
-        for (func_args in f[(before_funcs + 1):nrow(f), ]$arguments) {
-          for (arg in func_args) {
-            for (var in variables) {
-              if (var$id == arg && var$type == "column") {
-                columns[[length(columns) + 1]] <- var;
-                break;
-              }
-            }
-          }
-        }
-
-        formula <- paste0(
-          c(
-            variables[[col_index]]$name,
-            '~',
-            paste0(
-              lapply(columns, function(var) { return(var$name); }),
-              collapse = ' + '
-            )
-          ),
-          collapse = ' '
-        );
-
-        c(hyp_index, hypotheses) %<-% find_hypothesis(parse(text = formula)[[1]], hypotheses,
-                                                      add = TRUE);
-
-        hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
-
-        func <- list(
-          id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
-          name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
-          arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
-          depth =       depth - assignment_mode,
-          breakpoint =  NA
-        );
-
-        hypotheses[hyp_index, ]$functions[[1]] <- append(hypotheses[hyp_index, ]$functions[[1]], func$id);
-
-        functions[nrow(functions) + 1, ] <- func;
+        c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
+                                                                       assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
 
       # func()$column
       } else {
