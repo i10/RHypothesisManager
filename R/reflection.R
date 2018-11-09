@@ -20,8 +20,8 @@ loop <- function (text) {
 
   variables <- list();
 
-  functions <- data.frame(matrix(ncol = 5, nrow = 0));
-  colnames(functions) <- c("id", "name", "arguments", "depth", "breakpoint");
+  functions <- data.frame(matrix(ncol = 6, nrow = 0));
+  colnames(functions) <- c("id", "name", "signature", "arguments", "depth", "breakpoint");
 
   hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
   colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
@@ -38,7 +38,7 @@ loop <- function (text) {
 
 
 find_hypothesis <- function (exp, hypotheses, add = FALSE) {
-  f <- data.frame(matrix(ncol = 5, nrow = 0));
+  f <- data.frame(matrix(ncol = 6, nrow = 0));
 
   c(con_columns, f, h) %<-% recursion(exp[[length(exp)]], list(), f, data.frame(),
                                       lookup_mode = TRUE)
@@ -280,6 +280,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
   func <- list(
     id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
     name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
+    signature =   NA, # TODO: come up with
     arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
     depth =       depth - assignment_mode,
     breakpoint =  NA
@@ -466,6 +467,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       func <- list(
         id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
         name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
+        signature =   NA, # TODO: come up with
         arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
         depth =       depth - assignment_mode,
         breakpoint =  NA
@@ -482,6 +484,7 @@ recursion <- function (exp, variables, functions, hypotheses,
     func <- list(
       id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
       name =        "~",
+      signature =   NA, # TODO: come up with
       arguments =   list(list()),
       depth =       depth - assignment_mode,
       breakpoint =  NA
@@ -532,6 +535,7 @@ recursion <- function (exp, variables, functions, hypotheses,
     func <- list(
       id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
       name =        func_name,
+      signature =   paste0(c(as.character(exp[[1]]), "(" , paste0(as.character(exp[2:length(exp)]), collapse = ", "), ")"), collapse = ""),
       arguments =   list(),
       depth =       depth - assignment_mode,
       breakpoint =  NA
