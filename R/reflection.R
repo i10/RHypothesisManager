@@ -23,8 +23,8 @@ loop <- function (text) {
   functions <- data.frame(matrix(ncol = 5, nrow = 0));
   colnames(functions) <- c("id", "name", "arguments", "depth", "breakpoint");
 
-  hypotheses <- data.frame(matrix(ncol = 5, nrow = 0));
-  colnames(hypotheses) <- c("id", "name", "columns", "functions", "models");
+  hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
+  colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
 
   for (row in exp) {
     if (!is.language(row))
@@ -83,7 +83,8 @@ find_hypothesis <- function (exp, hypotheses, add = FALSE) {
       name =      name,
       columns =   list(columns),
       functions = list(list()),
-      models =    list(list())
+      models =    list(list()),
+      formulas =  list(list())
     );
 
     hypotheses[index,] <- hypothesis;
@@ -378,6 +379,8 @@ recursion <- function (exp, variables, functions, hypotheses,
 
       variables[[var_index]]$value <- hypotheses[selector, ]$id;
       variables[[var_index]]$type <- "formula";
+
+      hypotheses[selector, ]$formulas[[1]] = append(hypotheses[selector, ]$formulas[[1]], variables[[var_index]]$id);
 
     } else if (nrow(hypotheses)) {
       for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
