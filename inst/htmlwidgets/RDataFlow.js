@@ -94,14 +94,33 @@ HTMLWidgets.widget({
                         .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
                         .concat(products)
                         .reduce(function (acc, arg, i, arr) {
-
-                            while (true) {
+                            while (arg.generation > 0) {
                                 if (arg.precursors.length) {
-                                    // First of the precursors because otherwise too complicated
-                                    arg = variables.filter(function (v) { return arg.precursors.indexOf(v.id) !== -1; })[0]
+                                    const precursors = variables.filter(function (v) { return arg.precursors.indexOf(v.id) !== -1; });
+
+                                    const data_precursors = precursors.filter(function (v) { return v.type === "data"; });
+
+                                    if (arg.type === "data" && data_precursors.length === 0) {
+                                        // Assume that the data variable was constructed from the constants
+                                        //   and reset it's 'generation' attribute as if it was a regular data variables
+                                        arg.generation = 0;
+
+                                    } else if (arg.type === "data") {
+                                        acc.push(arg);
+
+                                        arg = data_precursors[0];
+
+                                    } else {
+                                        acc.push(arg);
+
+                                        arg = precursors[0];
+                                    }
 
                                 } else if (arg.type === "column") {
+                                    acc.push(arg);
+
                                     var tmp = variables.reduce(function (acc, v) { return v.columns.indexOf(arg.id) !== -1 ? v : acc; }, null);
+
                                     if (tmp !== null)
                                         arg = tmp;
 
@@ -110,51 +129,56 @@ HTMLWidgets.widget({
                                 }
                             }
 
-                            if (acc.reduce(function (acc, v) { return  acc && (v.id !== arg.id); }, true)) {
-                                acc.push(arg);
-                            }
+                            acc.push(arg);
 
                             return acc;
                         }, [])
-                        .filter(function (arg) { return arg.type === "data"; });
+                        .filter(function (arg) { return arg.type === "data"; })
+                        .reduce(function (acc, arg, i, arr) {
+                            if (acc.indexOf(arg) === -1)  // indexOf may not work properly, but == should
+                                acc.push(arg);
+
+                            return acc;
+                        }, []);
 
                     func.breakpoint = vars.reduce(function (acc, arg) { return acc || func.breakpoint === arg.id }, false);
 
                     // Stream-work
-                    vars.forEach(function (arg, i, arr) {
-                        var stream = acc.reduce(function (acc, stream) { return stream.id === arg.id ? stream : acc; }, null);
+                    vars.filter(function (arg, i, arr) { return arg.generation === 0; })
+                        .forEach(function (arg, i, arr) {
+                            var stream = acc.reduce(function (acc, stream) { return stream.id === arg.id ? stream : acc; }, null);
 
-                        // Cloning because stream overlaps
-                        const notch = JSON.parse(JSON.stringify(func));
-                        notch.parent = null;
+                            // Cloning because stream overlaps
+                            const notch = JSON.parse(JSON.stringify(func));
+                            notch.parent = null;
 
-                        if (stream === null) {
-                            stream = {
-                                name: arg.name,
-                                id: arg.id,
-                                functions: []
-                            };
+                            if (stream === null) {
+                                stream = {
+                                    name: arg.name,
+                                    id: arg.id,
+                                    functions: []
+                                };
 
-                            acc.push(stream);
+                                acc.push(stream);
 
-                        } else {
-                            notch.parent = stream.functions
-                                .filter(function(old_notch, i, arr) {
-                                    return (i === 0) ||
-                                        old_notch.breakpoint ||
-                                        (!old_notch.categories.length && !notch.categories.length) ||
-                                        (old_notch.categories.length && notch.categories.length &&
-                                         old_notch.categories[0].id === notch.categories[0].id);
-                                })
-                                .reverse()
-                                [0].id;
-                        }
+                            } else {
+                                notch.parent = stream.functions
+                                    .filter(function(old_notch, i, arr) {
+                                        return (i === 0) ||
+                                            old_notch.breakpoint ||
+                                            (!old_notch.categories.length && !notch.categories.length) ||
+                                            (old_notch.categories.length && notch.categories.length &&
+                                             old_notch.categories[0].id === notch.categories[0].id);
+                                    })
+                                    .reverse()
+                                    [0].id;
+                            }
 
-                        stream.functions.push(notch);
-                    });
+                            stream.functions.push(notch);
+                        });
 
-                    return acc;
-                }, []);
+                        return acc;
+                    }, []);
 
                 streams.forEach(function (stream, i, arr) {
                     const g = svg.append("g")
