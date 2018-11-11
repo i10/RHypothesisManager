@@ -37,21 +37,40 @@ loop <- function (text) {
 }
 
 
-find_hypothesis <- function (exp, hypotheses, add = FALSE) {
-  f <- data.frame(matrix(ncol = 6, nrow = 0));
+find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
+  functions <- data.frame(matrix(ncol = 6, nrow = 0));
 
-  c(con_columns, f, h) %<-% recursion(exp[[length(exp)]], list(), f, data.frame(),
-                                      lookup_mode = TRUE)
+  c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
+                                            lookup_mode = TRUE)
+
+  con_columns <- collect_columns(variables, functions);
+
+  con_column_ids <- lapply(con_columns, function(column) { return(column$id); });
 
   if (length(exp) == 3) {
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
 
-    c(dep_columns, f, h) %<-% recursion(exp[[2]], list(), f, data.frame(),
-                                        lookup_mode = TRUE)
+    if (is.name(exp[[2]])) {
+      c(dep_column_index, variables) %<-% find_variable(as.character(exp[[2]]), variables,
+                                                        add = TRUE,
+                                                        type_constraint = "column");
+
+      dep_column_id <- variables[[dep_column_index]]$id;
+
+    } else {
+      before_funcs <- nrow(functions);
+
+      c(variables, functions, h) %<-% recursion(exp[[2]], variables, functions, data.frame(),
+                                                lookup_mode = TRUE)
+
+      dep_columns <- collect_columns(variables, functions[before_funcs:nrow(functions), ]);
+
+      dep_column_id <- dep_columns[[length(dep_columns)]]$id;
+    }
 
     columns <- list(
-      dependant = dep_columns[[length(dep_columns)]]$name,
-      control = lapply(con_columns, function(column) { return(column$name); })
+      dependant = dep_column_id,
+      control = con_column_ids
     )
 
   } else if (length(exp) == 2) {
@@ -59,7 +78,7 @@ find_hypothesis <- function (exp, hypotheses, add = FALSE) {
 
     columns <- list(
       dependant = NULL,
-      control = lapply(con_columns, function(column) { return(column$name); })
+      control = con_column_ids
     )
 
   } else {
@@ -90,22 +109,34 @@ find_hypothesis <- function (exp, hypotheses, add = FALSE) {
     hypotheses[index,] <- hypothesis;
   }
 
-  return(list(index, hypotheses))
+  return(list(index, hypotheses, variables))
 }
 
 
-update_hypothesis <- function (hypothesis, variables) {
-  for (var in variables) {
-    hypothesis$columns[[1]]$control <- replace(hypothesis$columns[[1]]$control,
-                                               hypothesis$columns[[1]]$control == var$name,
-                                               var$id)
+collect_columns <- function (variables, functions) {
+  array <- list();
 
-    if (!is.null(hypothesis$columns[[1]]$dependant) && hypothesis$columns[[1]]$dependant == var$name) {
-      hypothesis$columns[[1]]$dependant <- var$id;
+  for (variable in variables) {
+    for (func_args in functions$arguments) {
+      if (variable$id %in% func_args) {
+        if (variable$type == "column") {
+          array <- append(array, variable);
+
+        } else if (variable$type == "constant") {
+          # TODO: somehow set the "column" type to the variable?
+          # TODO: if yes: which data variable it should be assigned to?
+          #               or can it just wait until later?
+          #               or it won't be any different from the old workflow with subsequent update_hypothesis call?
+          array <- append(array, variable);
+
+        } else if (variable$type == "formula") {
+          # TODO: `col1 ~ col2 ~ cols` case?
+        }
+      }
     }
   }
 
-  return (hypothesis);
+  return(array);
 }
 
 
@@ -169,9 +200,7 @@ argument_recursion <- function (args, func,
       }
 
     } else if (is.call(arg) && identical(arg[[1]], quote(`~`))) {
-      c(hyp_index, hypotheses) %<-% find_hypothesis(arg, hypotheses, add = TRUE);
-
-      hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
+      c(hyp_index, hypotheses, variables) %<-% find_hypothesis(arg, hypotheses, variables, add = TRUE);
 
       func$arguments <- append(func$arguments, hypotheses[hyp_index,]$id);
       hypotheses[hyp_index,]$functions[[1]] = append(hypotheses[hyp_index,]$functions[[1]], func$id);
@@ -273,9 +302,8 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
   formula <- parse(text=formula)[[1]];
 
-  c(hyp_index, hypotheses) %<-% find_hypothesis(formula, hypotheses, add = TRUE);
-
-  hypotheses[hyp_index,] <- update_hypothesis(as.list(hypotheses[hyp_index,]), variables);
+  c(hyp_index, hypotheses, variables) %<-% find_hypothesis(formula, hypotheses, variables,
+                                                           add = TRUE);
 
   func <- list(
     id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
@@ -478,7 +506,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
   # Is "~" call -- formula (aka hypothesis) initialization
   } else if (is.call(exp) && identical(exp[[1]], quote(`~`))) {
-    c(index, hypotheses) %<-% find_hypothesis(exp, hypotheses, add = TRUE);
+    c(index, hypotheses, variables) %<-% find_hypothesis(exp, hypotheses, variables, add = TRUE);
 
     # TODO: is to much of a crutch?
     func <- list(
