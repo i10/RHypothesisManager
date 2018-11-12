@@ -14,7 +14,8 @@ own_error <- function (message, custom_code, call = sys.call(-1), ...) {
 
 loop <- function (text, interactive = FALSE) {
   # Prepare
-  variables <- list();
+  variables <- data.frame(matrix(ncol = 8, nrow = 0));
+  colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
 
   functions <- data.frame(matrix(ncol = 8, nrow = 0));
   colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
@@ -107,7 +108,7 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
                                                         type_constraint = "column",
                                                         check_shadowing = FALSE);
 
-      dep_column_id <- variables[[dep_column_index]]$id;
+      dep_column_id <- variables[dep_column_index, ]$id;
 
     } else {
       before_funcs <- nrow(functions);
@@ -168,7 +169,9 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
 collect_columns <- function (variables, functions) {
   array <- list();
 
-  for (variable in variables) {
+  for (var_index in 1:nrow(variables)) {
+    variable <- as.list(variables[var_index, ]);
+
     for (func_args in functions$arguments) {
       if (variable$id %in% func_args) {
         if (variable$type == "column") {
@@ -195,7 +198,7 @@ collect_columns <- function (variables, functions) {
 find_variable <- function (name, variables, add = FALSE, force = FALSE, type_constraint = NULL,
                            check_shadowing = TRUE) {
   var <- NULL;
-  index <- length(variables) + 1;
+  index <- nrow(variables) + 1;
 
   if (!force) {
     packages <- find(name);
@@ -208,9 +211,9 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
       is_function_name <- !length(setdiff(grep("package:", packages), 1:length(packages)));
     }
 
-    if (length(variables) > 0)
-      for (i in 1:length(variables)) {
-        old_var <- variables[[i]];
+    if (nrow(variables) > 0)
+      for (i in 1:nrow(variables)) {
+        old_var <- as.list(variables[i, ]);
 
         if (old_var$name == name && (is.null(type_constraint) || any(old_var$type == type_constraint))) {
           is_function_name <- FALSE;  # having the variable by the name overrules the function name search (probably)
@@ -224,25 +227,24 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
     }
   }
 
-  if (index > length(variables)) {
+  if (index > nrow(variables)) {
     if (!add) {
       e <- own_error(paste0(c("The variable `", name, "` has never occured before, but addition has not been granted"), collapse=""),
                      custom_code = 1)
       stop(e)
     }
-
     var <- list(
       id =          paste0(c("v", UUIDgenerate()), collapse = "-"),
       name =        name,
-      precursors =  list(),
-      columns =     list(),
-      origin =      NULL,
+      precursors =  list(list()),
+      columns =     list(list()),
+      origin =      NA,
       type =        "constant",
-      value =       NULL,
+      value =       NA,
       generation =  0
     );
 
-    variables[[index]] <- var;
+    variables[index, ] <- var;
   }
 
   list(index, variables);
@@ -267,14 +269,14 @@ argument_recursion <- function (args, func,
           c(var_index, variables) %<-% find_variable(as.character(arg), variables,
                                                      add = addition_mode);
 
-          if (variables[[var_index]]$type == "constant" && !is.null(variables[[var_index]]$value)) {
-            func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is (supposed to be) atomic
+          if (variables[var_index, ]$type == "constant" && !is.na(variables[var_index, ]$value)) {
+            func$arguments <- append(func$arguments, variables[var_index, ]$value);  # value is (supposed to be) atomic
 
-          } else if (variables[[var_index]]$type == "formula") {
-            func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is a hypothesis id
+          } else if (variables[var_index, ]$type == "formula") {
+            func$arguments <- append(func$arguments, variables[var_index, ]$value);  # value is a hypothesis id
 
           } else {
-            func$arguments <- append(func$arguments, variables[[var_index]]$id)
+            func$arguments <- append(func$arguments, variables[var_index, ]$id)
           }
         },
         warning = function (...) {},
@@ -333,7 +335,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
                                              add = TRUE,
                                              type_constraint = "data");
 
-  do_force_add <- !length(variables[[var_index]]$columns);
+  do_force_add <- !length(variables[var_index, ]$columns[[1]]);
 
   # col2
   c(col_index, variables) %<-% find_variable(col2_name, variables,
@@ -342,14 +344,14 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
                                              type_constraint = "column",
                                              check_shadowing = FALSE);
 
-  variables[[col_index]]$type <- "column";
+  variables[col_index, ]$type <- "column";
 
-  if (variables[[col_index]]$generation == 0) {
-    variables[[col_index]]$generation <- variables[[var_index]]$generation + 1;
+  if (variables[col_index, ]$generation == 0) {
+    variables[col_index, ]$generation <- variables[var_index, ]$generation + 1;
   }
 
-  if (!(variables[[col_index]]$id %in% variables[[var_index]]$columns)) {
-    variables[[var_index]]$columns <- append(variables[[var_index]]$columns, variables[[col_index]]$id);
+  if (!(variables[col_index, ]$id %in% variables[var_index, ]$columns[[1]])) {
+    variables[var_index, ]$columns[[1]] <- append(variables[var_index, ]$columns[[1]], variables[col_index, ]$id);
   }
 
   # data$col1 == value
@@ -362,7 +364,9 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
   for (func_args in f[(before_funcs + 1):nrow(f), ]$arguments) {
     for (arg in func_args) {
-      for (var in variables) {
+      for (var_index in 1:nrow(variables)) {
+        var <- as.list(variables[var_index, ]);
+
         if (var$id == arg && var$type == "column") {
           columns[[length(columns) + 1]] <- var;
           break;
@@ -373,7 +377,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
   formula <- paste0(
     c(
-      variables[[col_index]]$name,
+      variables[col_index, ]$name,
       '~',
       paste0(
         lapply(columns, function (var) var$name),
@@ -394,7 +398,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
     lines =       NA,
     signature =   NA,
     packages =    NA,
-    arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function (var) var$id))),
+    arguments =   list(append(list(variables[var_index, ]$id, variables[col_index, ]$id), lapply(columns, function (var) var$id))),
     depth =       depth - addition_mode,
     breakpoint =  NA
   );
@@ -443,21 +447,25 @@ recursion <- function (exp, variables, functions, hypotheses,
     var_geneneration <- 0;
     precursor_variable_ids <- list();
 
-    for (variable in variables) {
-      for (func_args in functions[(before_funcs + 1):nrow(functions), ]$arguments) {
-        if (variable$id %in% func_args) {
-          if (variable$type == "column") {
-            # TODO: do smth?
+    if (nrow(variables)) {
+      for (var_index in 1:nrow(variables)) {
+        variable <- as.list(variables[var_index, ]);
 
-          } else if (variable$name == var_name) {
-            is_mutation <- TRUE;
+        for (func_args in functions[(before_funcs + 1):nrow(functions), ]$arguments) {
+          if (variable$id %in% func_args) {
+            if (variable$type == "column") {
+              # TODO: do smth?
 
-          } else if (!(variable$id %in% precursor_variable_ids)) {
-            if (var_geneneration < variable$generation + 1) {
-              var_geneneration <- variable$generation + 1;
+            } else if (variable$name == var_name) {
+              is_mutation <- TRUE;
+
+            } else if (!(variable$id %in% precursor_variable_ids)) {
+              if (var_geneneration < variable$generation + 1) {
+                var_geneneration <- variable$generation + 1;
+              }
+
+              precursor_variable_ids <- append(precursor_variable_ids, variable$id);
             }
-
-            precursor_variable_ids <- append(precursor_variable_ids, variable$id);
           }
         }
       }
@@ -469,63 +477,63 @@ recursion <- function (exp, variables, functions, hypotheses,
                                                force = !is_mutation,
                                                type_constraint = c("data", "model", "constant"));
 
-    if (is.null(variables[[var_index]]$origin)) {
-      variables[[var_index]]$origin <- functions[nrow(functions), ]$id;
+    if (is.na(variables[var_index, ]$origin)) {
+      variables[var_index, ]$origin <- functions[nrow(functions), ]$id;
     }
 
     if (is_mutation) {
-      functions[nrow(functions), ]$breakpoint <- variables[[var_index]]$id;
+      functions[nrow(functions), ]$breakpoint <- variables[var_index, ]$id;
 
     } else {
-      variables[[var_index]]$generation <- var_geneneration;
-      variables[[var_index]]$precursors <- precursor_variable_ids;
+      variables[var_index, ]$generation <- var_geneneration;
+      variables[var_index, ]$precursors <- list(precursor_variable_ids);
     }
 
     # We can meaningfully assume that the variable is a dataframe if it is actually declared as one
     #   or infer it from the fact it has been read from the file source.
     if (functions[nrow(functions), ]$name %in% list("subset", "[", "data.frame", "as.data.frame", "table") ||
         startsWith(functions[nrow(functions), ]$name, "read")) {
-      variables[[var_index]]$type <- "data";
+      variables[var_index, ]$type <- "data";
 
     } else if (before_funcs - nrow(functions) == 1 &&
                functions[nrow(functions), ]$name == "~") {
       selector <- apply(hypotheses, 1, function (hyp) functions[nrow(functions)]$id %in% hyp$functions);
 
-      variables[[var_index]]$value <- hypotheses[selector, ]$id;
-      variables[[var_index]]$type <- "formula";
+      variables[var_index, ]$value <- hypotheses[selector, ]$id;
+      variables[var_index, ]$type <- "formula";
 
-      hypotheses[selector, ]$formulas[[1]] = append(hypotheses[selector, ]$formulas[[1]], variables[[var_index]]$id);
+      hypotheses[selector, ]$formulas[[1]] = append(hypotheses[selector, ]$formulas[[1]], variables[var_index, ]$id);
 
     } else if (nrow(hypotheses)) {
       for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
         selector <- apply(hypotheses, 1, function (hyp) func_id %in% hyp$functions);
 
         if (nrow(hypotheses[selector, ])) {
-          variables[[var_index]]$type <- "model";
+          variables[var_index, ]$type <- "model";
 
           for (hyp_id in hypotheses[selector, ]$id) {
             hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
-                                                                        variables[[var_index]]$id)
+                                                                        variables[var_index, ]$id)
           }
         }
 
         func_args = functions[functions$id == func_id, ]$arguments[[1]];
 
         if (nrow(hypotheses[hypotheses$id %in% func_args, ])) {
-          variables[[var_index]]$type <- "model";
+          variables[var_index, ]$type <- "model";
 
           for (hyp_id in hypotheses[hypotheses$id %in% func_args, ]$id) {
             hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
-                                                                        variables[[var_index]]$id)
+                                                                        variables[var_index, ]$id)
           }
         }
       }
     }
 
-    if (variables[[var_index]]$type == "constant") {
+    if (variables[var_index, ]$type == "constant") {
       tryCatch(
         expr = {
-          variables[[var_index]]$value <- eval(exp[[3]]);
+          variables[var_index, ]$value <- eval(exp[[3]]);
         },
         warning = function (...) {},
         error = function (...) {},
@@ -586,15 +594,15 @@ recursion <- function (exp, variables, functions, hypotheses,
 
       c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
                                                  add = TRUE,
-                                                 force = !length(variables[[var_index]]$columns),
+                                                 force = !length(variables[var_index, ]$columns[[1]]),
                                                  type_constraint = "column",
                                                  check_shadowing = FALSE);
 
-      variables[[col_index]]$generation <- variables[[var_index]]$generation + 1;
-      variables[[col_index]]$type <- "column";
+      variables[col_index, ]$generation <- variables[var_index, ]$generation + 1;
+      variables[col_index, ]$type <- "column";
 
-      if (!(variables[[col_index]]$id %in% variables[[var_index]]$columns)) {
-        variables[[var_index]]$columns <- append(variables[[var_index]]$columns, variables[[col_index]]$id)
+      if (!(variables[col_index, ]$id %in% variables[var_index, ]$columns[[1]])) {
+        variables[var_index, ]$columns[[1]] <- append(variables[var_index, ]$columns[[1]], variables[col_index, ]$id)
       }
 
       func <- list(
@@ -603,7 +611,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         lines =       NA,
         signature =   NA,
         packages =    NA,
-        arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
+        arguments =   list(list(variables[var_index, ]$id, variables[col_index, ]$id)),
         depth =       depth - addition_mode,
         breakpoint =  NA
       );
@@ -695,7 +703,9 @@ recursion <- function (exp, variables, functions, hypotheses,
       if (nrow(hypotheses)) {
         col_ids <- list();
 
-        for (var in variables) {
+        for (var_index in 1:nrow(variables)) {
+          var <- as.list(variables[var_index, ]);
+
           if (var$id %in% func$arguments && var$type == "column") {
             col_ids <- append(col_ids, var$id);
           }
@@ -787,15 +797,14 @@ addin <- function () {
 
                   # Clear the undumpable constant values from the variables list
                   # TODO: find a way to sneak the `jsonlite.toJSON(..., force = TRUE)` into the shiny calls
-                  for (i in 1:length(variables))
-                    if (variables[[i]]$type == "constant" &&
-                        !is.null(variables[[i]]$value) &&
-                        !tryCatch(expr = { jsonlite::toJSON(variables[[i]]); TRUE }, error = function(...) FALSE))
-                      variables[[i]]$value = NULL
+                  dumpability_selector = apply(variables, 1, function (v) v$type != "constant" || is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
+
+                  if (!all(dumpability_selector))
+                    variables[!dumpability_selector, ]$value <- NA
 
                   output$graph <- renderRDataFlow({
                     RDataFlow(list(
-                      variables = variables,
+                      variables = unname(apply(variables, 1, as.list)),
                       functions = unname(apply(functions, 1, as.list)),
                       hypotheses = unname(apply(hypotheses, 1, as.list))
                     ))
