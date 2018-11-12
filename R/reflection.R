@@ -323,7 +323,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
 
 recursion <- function (exp, variables, functions, hypotheses,
-                       assignment_mode = FALSE, lookup_mode = FALSE,
+                       assignment_mode = FALSE, lookup_mode = FALSE, force_as_function = FALSE,
                        depth = 0) {
   depth <- depth + 1;
 
@@ -398,7 +398,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     # We can meaningfully assume that the variable is a dataframe if it is actually declared as one
     #   or infer it from the fact it has been read from the file source.
-    if (functions[nrow(functions), ]$name %in% list("subset", "data.frame", "as.data.frame") ||
+    if (functions[nrow(functions), ]$name %in% list("subset", "[", "data.frame", "as.data.frame", "table") ||
         startsWith(functions[nrow(functions), ]$name, "read")) {
       variables[[var_index]]$type <- "data";
 
@@ -449,11 +449,21 @@ recursion <- function (exp, variables, functions, hypotheses,
     }
 
   # Is "[" call
-  } else if (is.call(exp) && identical(exp[[1]], quote(`[`))) {
+  } else if (is.call(exp) && identical(exp[[1]], quote(`[`)) && !force_as_function) {
     # data[data$col1 == value, "col2"]
     if (length(exp) == 4) {
-      c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
-                                                                     assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+      col_name <- exp[[4]];
+
+      # data[data$col1 == value, ] <- but w/o the $ in the end
+      if (missing(col_name)) {
+        c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
+                                                           assignment_mode = assignment_mode, depth = depth,
+                                                           force_as_function = TRUE);
+
+      } else {
+        c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
+                                                                       assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+      }
 
     } else {
       c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
@@ -505,22 +515,15 @@ recursion <- function (exp, variables, functions, hypotheses,
     }
 
   # Is "~" call -- formula (aka hypothesis) initialization
-  } else if (is.call(exp) && identical(exp[[1]], quote(`~`))) {
+  } else if (is.call(exp) && identical(exp[[1]], quote(`~`)) && !force_as_function) {
     c(index, hypotheses, variables) %<-% find_hypothesis(exp, hypotheses, variables, add = TRUE);
 
-    # TODO: is to much of a crutch?
-    func <- list(
-      id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
-      name =        "~",
-      signature =   NA, # TODO: come up with
-      arguments =   list(list()),
-      depth =       depth - assignment_mode,
-      breakpoint =  NA
-    )
+    c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
+                                                       assignment_mode = assignment_mode, depth = depth,
+                                                       force_as_function = TRUE);
 
-    functions[nrow(functions) + 1, ] <- func;
 
-    hypotheses[index, ]$functions[[1]] <- append(hypotheses[index, ]$functions[[1]], func$id);
+    hypotheses[index, ]$functions[[1]] <- append(hypotheses[index, ]$functions[[1]], functions[nrow(functions), ]$id);
 
   # Is function declaration
   } else if (is.call(exp) && identical(exp[[1]], quote(`function`))) {
