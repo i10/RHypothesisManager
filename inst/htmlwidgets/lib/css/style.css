@@ -15,11 +15,11 @@
     stroke-width: 2px;
 }
 
-.node.model_node circle {
+.node.marker circle {
     stroke: #999999;
 }
 
-.node.model_node text {
+.node.marker text {
     stroke: black;
 }
 

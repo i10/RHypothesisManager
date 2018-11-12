@@ -81,18 +81,14 @@ HTMLWidgets.widget({
                         return acc;
                     }
 
-                    const args = func.arguments.reduce(argument_recursion, []);
-
                     const products = variables.filter(function (v) { return v.origin === func.id; });
 
-                    func.model_name = args.concat(products)
-                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v" && arg.type === "model"; })
-                        .map(function (arg) { return arg.name })
-                        .reduce(function (acc, arg) { return acc && acc !== arg ? "…" : arg; }, null);
+                    const args = func.arguments
+                        .reduce(argument_recursion, [])
+                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
+                        .concat(products);
 
                     const vars = args
-                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
-                        .concat(products)
                         .reduce(function (acc, arg, i, arr) {
                             while (arg.generation > 0) {
                                 if (arg.precursors.length) {
@@ -142,6 +138,13 @@ HTMLWidgets.widget({
                         }, []);
 
                     func.breakpoint = vars.reduce(function (acc, arg) { return acc || func.breakpoint === arg.id }, false);
+
+                    const there_are_models = args.reduce(function(acc, arg, i, arr) { return acc || arg.type === "model"; }, false);
+
+                    func.marker = args
+                        .filter(function (arg, i, arr) { return arg.type === "model" || (!there_are_models && arg.type === "data" && arg.generation > 1); })
+                        .map(function (arg, i, arr) { return arg.name })
+                        .reduce(function (acc, arg, i, arr) { return acc && acc !== arg ? "…" : arg; }, null);
 
                     // Stream-work
                     vars.filter(function (arg, i, arr) { return arg.generation === 0; })
@@ -233,7 +236,7 @@ HTMLWidgets.widget({
                                 "node",
                                 (d.children ? "node--internal" : "node--leaf"),
                                 (func.breakpoint ? "breakpoint" : ""),
-                                (func.model_name ? "model_node" : "")
+                                (func.marker ? "marker" : "")
                             ].join(" ");
                         })
                         .attr("transform", function (d) {
@@ -252,7 +255,7 @@ HTMLWidgets.widget({
                         .style("stroke", function (d) {
                             const func = d.data.data;
 
-                            if (!func.breakpoint /*&& !d.data.data.model_name*/ && func.categories.length)
+                            if (!func.breakpoint /*&& !func.marker*/ && func.categories.length)
                                 return color(func.categories[0].name);
                         });
 
@@ -306,7 +309,7 @@ HTMLWidgets.widget({
                         .style("text-anchor", "end")
                         .text(function (d) {
                             const func = d.data.data;
-                            return func.model_name;
+                            return func.marker;
                         });
                 });
 
