@@ -257,6 +257,10 @@ HTMLWidgets.widget({
 
                             if (!func.breakpoint /*&& !func.marker*/ && func.categories.length)
                                 return color(func.categories[0].name);
+                        })
+                        .on("click", function(d) {
+                            const func = d.data.data;
+                            Shiny.setInputValue("goto", func.line);
                         });
 
                     node.append("text")

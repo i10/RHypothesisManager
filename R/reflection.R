@@ -16,21 +16,59 @@ is_variable <- function(x) {
 loop <- function (text) {
   options(stringsAsFactors = FALSE);
 
-  exp <- parse(text=text);
-
+  # Prepare
   variables <- list();
 
-  functions <- data.frame(matrix(ncol = 6, nrow = 0));
-  colnames(functions) <- c("id", "name", "signature", "arguments", "depth", "breakpoint");
+  functions <- data.frame(matrix(ncol = 7, nrow = 0));
+  colnames(functions) <- c("id", "name", "line", "signature", "arguments", "depth", "breakpoint");
 
   hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
   colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
 
-  for (row in exp) {
-    if (!is.language(row))
-      next;
+  # Run loop
+  line_no <- 1;
 
-    c(variables, functions, hypotheses) %<-% recursion(row, variables, functions, hypotheses)
+  while (line_no < length(text) + 1) {
+    line_no2 <- line_no;
+
+    while (line_no2 < length(text) + 1) {
+      tryCatch(
+        expr = {
+          line <- paste0(text[line_no:line_no2], collapse="\n");
+
+          row <- parse(text=paste0(text[line_no:line_no2], collapse="\n"));
+
+          if (!is.language(row) || length(row) == 0) {
+            break;
+          }
+
+          row <- row[[1]];
+
+          before_funcs <- nrow(functions);
+
+          c(variables, functions, hypotheses) %<-% recursion(row, variables, functions, hypotheses)
+
+          if (nrow(functions) > before_funcs) {
+            functions[(before_funcs + 1):nrow(functions), ]$line <- line_no;
+            functions[nrow(functions), ]$signature <- line;
+          }
+
+          break;
+        },
+        warning = function (...) {},
+        error = function (e) {
+          if (grepl("unexpected end of input", e$message)) {
+            line_no2 <<- line_no2 + 1;
+
+          } else {
+            stop(e);  # error rethrow
+          }
+        },
+        finally = function (...) {}
+      )
+    }
+
+    line_no <- line_no2 + 1;
   }
 
   return(list(variables, functions, hypotheses));
@@ -38,7 +76,7 @@ loop <- function (text) {
 
 
 find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
-  functions <- data.frame(matrix(ncol = 6, nrow = 0));
+  functions <- data.frame(matrix(ncol = 7, nrow = 0));
 
   c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
                                             lookup_mode = TRUE)
@@ -308,6 +346,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
   func <- list(
     id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
     name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
+    line =        NA,
     signature =   NA, # TODO: come up with
     arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
     depth =       depth - assignment_mode,
@@ -505,6 +544,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       func <- list(
         id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
         name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
+        line =        NA,
         signature =   NA, # TODO: come up with
         arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
         depth =       depth - assignment_mode,
@@ -566,6 +606,7 @@ recursion <- function (exp, variables, functions, hypotheses,
     func <- list(
       id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
       name =        func_name,
+      line =        NA,
       signature =   paste0(c(as.character(exp[[1]]), "(" , paste0(as.character(exp[2:length(exp)]), collapse = ", "), ")"), collapse = ""),
       arguments =   list(),
       depth =       depth - assignment_mode,
@@ -670,6 +711,13 @@ addin <- function() {
           finally = {}
         )
     })
+
+    observeEvent(
+      input$goto,
+      {
+        rstudioapi::navigateToFile(old_path, input$goto, 0);
+      }
+    )
   }
 
   viewer <- paneViewer(300);
