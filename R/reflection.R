@@ -192,7 +192,11 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
       }
     }
 
-  if (index > length(variables) && add) {
+  if (index > length(variables)) {
+    if (!add) {
+      stop(paste0(c("The variable `", name, "` has never occured before, but addition has not been granted"), collapse=""));
+    }
+
     var <- list(
       id =          paste0(c("v", UUIDgenerate()), collapse = "-"),
       name =        name,
