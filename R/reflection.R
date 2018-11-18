@@ -77,6 +77,7 @@ loop <- function (text) {
 
 find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
   functions <- data.frame(matrix(ncol = 7, nrow = 0));
+  colnames(functions) <- c("id", "name", "line", "signature", "arguments", "depth", "breakpoint");
 
   c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
                                             lookup_mode = TRUE)
@@ -158,14 +159,14 @@ collect_columns <- function (variables, functions) {
     for (func_args in functions$arguments) {
       if (variable$id %in% func_args) {
         if (variable$type == "column") {
-          array <- append(array, variable);
+          array[[length(array) + 1]] <- variable;
 
         } else if (variable$type == "constant") {
           # TODO: somehow set the "column" type to the variable?
           # TODO: if yes: which data variable it should be assigned to?
           #               or can it just wait until later?
           #               or it won't be any different from the old workflow with subsequent update_hypothesis call?
-          array <- append(array, variable);
+          array[[length(array) + 1]] <- variable;
 
         } else if (variable$type == "formula") {
           # TODO: `col1 ~ col2 ~ cols` case?
