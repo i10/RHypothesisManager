@@ -710,6 +710,7 @@ addin <- function() {
 
             output$graph <- renderRDataFlow({
               RDataFlow(list(
+                type = "success",
                 variables = variables,
                 functions = unname(apply(functions, 1, as.list)),
                 hypotheses = unname(apply(hypotheses, 1, as.list))
@@ -719,8 +720,18 @@ addin <- function() {
             old_path <<- path;
             old_hash <<- hash;
           },
-          warning = function (...) {},
-          error = function(...) {},
+          warning = function (w) {
+            RDataFlow(list(
+              type = "warning",
+              message = w$message
+            ))
+          },
+          error = function (e) {
+            RDataFlow(list(
+              type = "error",
+              message = e$message
+            ))
+          },
           finally = {}
         )
     })

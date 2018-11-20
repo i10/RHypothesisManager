@@ -7,6 +7,11 @@ HTMLWidgets.widget({
 
         return {
             renderValue: function (x) {
+                if (x.type === "warning" || x.type === "error") {
+                    window.alert(x.message);
+                    return;
+                }
+
                 const svg = d3.select("svg");
 
                 svg.selectAll("*").remove();
