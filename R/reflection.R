@@ -80,7 +80,7 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
   colnames(functions) <- c("id", "name", "line", "signature", "arguments", "depth", "breakpoint");
 
   c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
-                                            lookup_mode = TRUE)
+                                            addition_mode = TRUE)
 
   con_columns <- collect_columns(variables, functions);
 
@@ -100,7 +100,7 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
       before_funcs <- nrow(functions);
 
       c(variables, functions, h) %<-% recursion(exp[[2]], variables, functions, data.frame(),
-                                                lookup_mode = TRUE)
+                                                addition_mode = TRUE)
 
       dep_columns <- collect_columns(variables, functions[before_funcs:nrow(functions), ]);
 
@@ -217,7 +217,7 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
 
 argument_recursion <- function (args, func,
                                 variables, functions, hypotheses,
-                                depth, assignment_mode = FALSE) {
+                                depth, addition_mode = FALSE) {
   for (arg in args) {
     if (missing(arg)) {
 
@@ -225,22 +225,28 @@ argument_recursion <- function (args, func,
       func$arguments <- append(func$arguments, arg)
 
     } else if (is.name(arg)) {
-      c(var_index, variables) %<-% find_variable(as.character(arg), variables,
-                                                 add = assignment_mode);
+      # NB: Technically, thyCatch wrapping here is a crutch, however it does not seem possbile to ensure that
+      #     the existence of the variables that are being called within in some of the cases,
+      #     even though the code remains valid overall
+      tryCatch(
+        expr = {
+          c(var_index, variables) %<-% find_variable(as.character(arg), variables,
+                                                     add = addition_mode);
 
-      if (var_index <= length(variables)) {
-        # variables[[var_index]]$functions = append(variables[[var_index]]$functions, func$id)
+          if (variables[[var_index]]$type == "constant" && !is.null(variables[[var_index]]$value)) {
+            func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is (supposed to be) atomic
 
-        if (variables[[var_index]]$type == "constant" && !is.null(variables[[var_index]]$value)) {
-          func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is (supposed to be) atomic
+          } else if (variables[[var_index]]$type == "formula") {
+            func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is a hypothesis id
 
-        } else if (variables[[var_index]]$type == "formula") {
-          func$arguments <- append(func$arguments, variables[[var_index]]$value);  # value is a hypothesis id
-
-        } else {
-          func$arguments <- append(func$arguments, variables[[var_index]]$id)
-        }
-      }
+          } else {
+            func$arguments <- append(func$arguments, variables[[var_index]]$id)
+          }
+        },
+        warning = function (...) {},
+        error = function (...) {},
+        finally = function (...) {}
+      )
 
     } else if (is.call(arg) && identical(arg[[1]], quote(`~`))) {
       c(hyp_index, hypotheses, variables) %<-% find_hypothesis(arg, hypotheses, variables, add = TRUE);
@@ -251,13 +257,13 @@ argument_recursion <- function (args, func,
     } else if (is.call(arg) && (identical(arg[[1]], quote(`c`)) || identical(arg[[1]], quote(`list`)))) {
       c(func, variables, functions, hypotheses) %<-% argument_recursion(as.list(arg)[2:length(arg)], func,
                                                                         variables, functions, hypotheses,
-                                                                        depth, assignment_mode = assignment_mode)
+                                                                        depth, addition_mode = addition_mode)
 
     } else {
       before_funcs <- nrow(functions);
 
       c(variables, functions, hypotheses) %<-% recursion(arg, variables, functions, hypotheses,
-                                                         assignment_mode = assignment_mode, depth = depth);
+                                                         addition_mode = addition_mode, depth = depth);
 
       if (nrow(functions) != before_funcs) {
         func$arguments <- append(func$arguments, functions[nrow(functions), ]$id);
@@ -270,8 +276,7 @@ argument_recursion <- function (args, func,
 
 
 hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
-                                   assignment_mode = FALSE, lookup_mode = FALSE,
-                                   depth = 0) {
+                                   addition_mode = FALSE, depth = 0) {
 
   # data[data$col1 == value, ]$col2
   if (identical(exp[[1]], quote(`$`))) {
@@ -316,7 +321,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
   before_funcs <- nrow(functions);
 
   c(variables, f, hypotheses) %<-% recursion(lookup, variables, functions, hypotheses,
-                                             assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+                                             addition_mode = addition_mode, depth = depth);
 
   columns <- list()
 
@@ -354,7 +359,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
     line =        NA,
     signature =   NA, # TODO: come up with
     arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
-    depth =       depth - assignment_mode,
+    depth =       depth - addition_mode,
     breakpoint =  NA
   );
 
@@ -367,7 +372,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
 
 recursion <- function (exp, variables, functions, hypotheses,
-                       assignment_mode = FALSE, lookup_mode = FALSE, force_as_function = FALSE,
+                       addition_mode = FALSE, force_as_function = FALSE,
                        depth = 0) {
   depth <- depth + 1;
 
@@ -379,7 +384,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       is_mutation <- TRUE;
 
       c(variables, tmp, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
-                                                   assignment_mode = TRUE, depth = depth)
+                                                   addition_mode = TRUE, depth = depth)
 
       var_name <- exp[[2]];
 
@@ -397,7 +402,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     # Find the precursors and invoked functions
     c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses,
-                                                       assignment_mode = TRUE, depth = depth);
+                                                       addition_mode = TRUE, depth = depth);
 
     var_geneneration <- 0;
     precursor_variable_ids <- list();
@@ -501,17 +506,17 @@ recursion <- function (exp, variables, functions, hypotheses,
       # data[data$col1 == value, ] <- but w/o the $ in the end
       if (missing(col_name)) {
         c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
-                                                           assignment_mode = assignment_mode, depth = depth,
+                                                           addition_mode = addition_mode, depth = depth,
                                                            force_as_function = TRUE);
 
       } else {
         c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
-                                                                       assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+                                                                       addition_mode = addition_mode, depth = depth);
       }
 
     } else {
       c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
-                                                         assignment_mode = assignment_mode, depth = depth);
+                                                         addition_mode = addition_mode, depth = depth);
     }
 
   # Is "$" call
@@ -520,18 +525,18 @@ recursion <- function (exp, variables, functions, hypotheses,
       # data[data$col1 == value, ]$col2
       if (identical(exp[[2]][[1]], quote(`[`))) {
         c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
-                                                                       assignment_mode = assignment_mode, lookup_mode = lookup_mode, depth = depth);
+                                                                       addition_mode = addition_mode, depth = depth);
 
       # func()$column
       } else {
         c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
-                                                           assignment_mode = assignment_mode, depth = depth - 1);
+                                                           addition_mode = addition_mode, depth = depth - 1);
       }
 
     # data$column
     } else {
       c(var_index, variables) %<-% find_variable(as.character(exp[[2]]), variables,
-                                                 add = assignment_mode || lookup_mode,
+                                                 add = addition_mode,
                                                  type_constraint = c("data", "model", "constant"));
 
       c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
@@ -552,7 +557,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         line =        NA,
         signature =   NA, # TODO: come up with
         arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
-        depth =       depth - assignment_mode,
+        depth =       depth - addition_mode,
         breakpoint =  NA
       );
 
@@ -564,7 +569,7 @@ recursion <- function (exp, variables, functions, hypotheses,
     c(index, hypotheses, variables) %<-% find_hypothesis(exp, hypotheses, variables, add = TRUE);
 
     c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
-                                                       assignment_mode = assignment_mode, depth = depth,
+                                                       addition_mode = addition_mode, depth = depth,
                                                        force_as_function = TRUE);
 
 
@@ -586,18 +591,21 @@ recursion <- function (exp, variables, functions, hypotheses,
 
   # Is paranthesis (?!)
   } else if (is.call(exp) && identical(exp[[1]], quote(`(`))) {
-    c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses, depth = depth);
+    c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
+                                                       addition_mode = addition_mode, depth = depth);
 
   # Is if/for clause
   } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)))) {
     # TODO: add conditional as the precursor?
 
-    c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses, depth = depth);
+    c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses,
+                                                       addition_mode = addition_mode, depth = depth);
 
   # Is block statement
   } else if (is.call(exp) && identical(exp[[1]], quote(`{`))) {
     for (line in as.list(exp)[2:length(exp)])
-      c(variables, functions, hypotheses) %<-% recursion(line, variables, functions, hypotheses, depth = depth);
+      c(variables, functions, hypotheses) %<-% recursion(line, variables, functions, hypotheses,
+                                                       addition_mode = addition_mode, depth = depth);
 
   # Is a generic function call
   } else if (is.call(exp)) {
@@ -614,14 +622,14 @@ recursion <- function (exp, variables, functions, hypotheses,
       line =        NA,
       signature =   paste0(c(as.character(exp[[1]]), "(" , paste0(as.character(exp[2:length(exp)]), collapse = ", "), ")"), collapse = ""),
       arguments =   list(),
-      depth =       depth - assignment_mode,
+      depth =       depth - addition_mode,
       breakpoint =  NA
     );
 
     if (length(exp) > 1) {
       c(func, variables, functions, hypotheses) %<-% argument_recursion(as.list(exp)[2:length(exp)], func,
                                                                         variables, functions, hypotheses,
-                                                                        depth = depth, assignment_mode=assignment_mode);
+                                                                        depth = depth, addition_mode = addition_mode);
 
       # TODO: improve the hypothesis selection
       if (nrow(hypotheses)) {
@@ -661,7 +669,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     # NB: does not add the variable to the list by deault
     c(tmp, variables) %<-% find_variable(as.character(exp), variables,
-                                         add = assignment_mode || lookup_mode);
+                                         add = addition_mode);
 
   # Is atomic
   } else if (is.atomic(exp)) {
