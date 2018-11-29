@@ -684,10 +684,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
 
 addin <- function() {
-  ui = bootstrapPage(
-    tag('svg', list()),
-    RDataFlowOutput("graph", '100%', '600px')
-  )
+  ui = bootstrapPage(RDataFlowOutput("graph"))
 
   server <- function(input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);

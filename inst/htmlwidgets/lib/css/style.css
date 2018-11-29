@@ -1,3 +1,36 @@
+html, body {
+    height: 100%;
+    width: 100%;
+}
+
+#graph {
+    display: -webkit-flex;
+    -webkit-flex-direction: row;
+    -webkit-align-items: flex-start;
+}
+
+#graph > * {
+    -webkit-flex-shrink: 0;
+}
+
+#selector {
+    width: 160px;
+}
+
+#wrapper {
+    overflow: scroll;
+    -webkit-flex-grow: 1;
+    -webkit-flex-basis: calc(100% - 360px);
+
+    height: 100%;
+}
+
+#legend {
+    width: 200px;
+    padding: 0;
+}
+
+/*SVG stuff*/
 .link {
     stroke: #999;
     fill: transparent;
@@ -27,9 +60,37 @@ text {
     font: 12px sans-serif;
     stroke: #444444;
 }
+/*SVG stuff*/
 
-.tooltip {
+#tooltip {
     background: #fd7;
     white-space: pre !important;
     font-family: monospace !important;
+}
+
+.legend {
+    position: relative;
+    display: block;
+
+    padding-right: calc(1em + 5px);
+
+    overflow: hidden;
+
+    text-align: right;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.legend.useless {
+    display: none;
+}
+
+.legend span:last-child {
+    position: absolute;
+    display: block;
+
+    right: 2.5px;
+    top: 2px;
+    width: 1em;
+    height: 1em;
 }

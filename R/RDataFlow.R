@@ -38,8 +38,23 @@ RDataFlow <- function(message, width = NULL, height = NULL, elementId = NULL) {
 #' @name RDataFlow-shiny
 #'
 #' @export
-RDataFlowOutput <- function(outputId, width = '100%', height = '400px'){
+RDataFlowOutput <- function(outputId, width = '100%', height = '100%'){
   htmlwidgets::shinyWidgetOutput(outputId, 'RDataFlow', width, height, package = 'RDataFlowPlugin')
+}
+
+RDataFlow_html <- function(id, style, class, ...) {
+  tag("div", list(
+    id = id,
+    style = style,
+    class = class,
+    tag("select", list(id="selector")),
+    tag("div", list(
+      id = "wrapper",
+      tag("svg", list())
+    )),
+    tag("ul", list(id="legend")),
+    tag("div", list(id="tooltip", class="tooltip"))
+  ))
 }
 
 #' @rdname RDataFlow-shiny

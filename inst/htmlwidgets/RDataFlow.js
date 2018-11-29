@@ -12,22 +12,20 @@ HTMLWidgets.widget({
                     return;
                 }
 
-                const svg = d3.select("svg");
+                const container = d3.select(el);
+
+                const svg = container.select("svg");
+                const selector = container.select("#selector");
+                const legend = container.select("#legend");
 
                 svg.selectAll("*").remove();
+                selector.selectAll("*").remove();
 
                 const defs = svg.append("defs");
 
-                d3.select(".tooltip").remove();
-
-                const tooltip = d3.select("body").append("div")
-                    .attr("class", "tooltip")
+                const tooltip = container.select("#tooltip")
+                    .html("")
                     .style("opacity", 0);
-
-                svg.attrs({
-                    "width": width,
-                    "height": height
-                });
 
                 const variables = x.variables,
                       functions = x.functions,
@@ -186,36 +184,70 @@ HTMLWidgets.widget({
                         });
 
                         return acc;
-                    }, []);
+                    }, [])
+                    .sort(function (a, b) {
+                        return b.functions.length - a.functions.length;  // Descending order
+                    });
 
                 streams.forEach(function (stream, i, arr) {
+                    selector.append("option")
+                        .attr("value", i)
+                        .text(stream.name + ":" + stream.functions.length)
+                });
+
+                selector.on("change", function (d) {
+                    const i = Number(this.value);
+                    draw(streams[i], i, streams);
+                });
+
+                function draw (stream_, i, arr) {
+                    svg.selectAll(".stream").remove();
+
                     const g = svg.append("g")
-                        .attr("transform", "translate(" + i / arr.length * width + "," + 50 + ")");
+                        .attr("class", "stream")
+                        .attr("transform", "translate(" + 0 + "," + 50 + ")");
+
+                    var stream = d3.stratify()
+                        .id(function (d) { return d.id; })
+                        .parentId(function (d) { return d.parent; })
+                        (stream_.functions);
+
+                    var nodes = d3.hierarchy(stream);
+
+                    const depth = nodes.height;
+
+                    function breadth_seek(acc, node) {
+                        if (node.hasOwnProperty("children")) {
+                            node.children.forEach(function (node) {
+                                acc = breadth_seek(acc, node);
+                            });
+                        }
+
+                        acc[node.depth] = acc[node.depth] ? acc[node.depth] + 1 : 1;
+
+                        return acc;
+                    }
+
+                    const breadth = Math.max.apply(null, breadth_seek(Array(depth), nodes));
+
+                    svg.attrs({
+                        width: breadth * 120,
+                        height: depth * 30
+                    });
+
+                    const tree = d3.tree().size([breadth * 120, depth * 30]);
+
+                    // maps the node data to the tree layout
+                    nodes = tree(nodes);
 
                     g.append("text")
                         .attrs({
-                            x: width / arr.length / 2,
+                            x: nodes.x,
                             y: -20,
                             dy: ".35em"
                         })
                         .style("text-anchor", "middle")
-                        .text(stream.name);
-
-                    const tree = d3.tree().size([width / arr.length, height - 80]);
-
-                    stream = d3.stratify()
-                        .id(function (d) { return d.id; })
-                        .parentId(function (d) { return d.parent; })
-                        (stream.functions);
-
-                    /*stream.each(function(d) {
-                        d.name = d.data.name;
-                    });*/
-
-                    var nodes = d3.hierarchy(stream);
-
-                    // maps the node data to the tree layout
-                    nodes = tree(nodes);
+                        .text(stream_.name);
 
                     var link = g.selectAll(".link")
                         .data(nodes.descendants().slice(1))
@@ -242,7 +274,7 @@ HTMLWidgets.widget({
                                 (d.children ? "node--internal" : "node--leaf"),
                                 (func.breakpoint ? "breakpoint" : ""),
                                 (func.marker ? "marker" : "")
-                            ].join(" ");
+                            ].join(" ").trim();
                         })
                         .attr("transform", function (d) {
                             return "translate(" + d.x + "," + d.y + ")";
@@ -320,29 +352,35 @@ HTMLWidgets.widget({
                             const func = d.data.data;
                             return func.marker;
                         });
-                });
 
-                const legend = svg.append("g")
-                    .selectAll(".legend")
-                    .data(color.domain())
-                    .enter().append("g")
-                    .attr("class", "legend")
-                    .attr("transform", function (d, i) { return "translate(0," + i * 20 + ")"; });
+                    const stream_categories = stream_.functions
+                        .reduce(function (acc, func, i, arr) {
+                            return acc.concat(func.categories.map(function (cat) { return cat.name; }));
+                        }, [])
+                        .filter(function (e, i, arr) {
+                            return arr.indexOf(e) === i;
+                        });
 
-                // draw legend colored rectangles
-                legend.append("rect")
-                    .attr("x",      width - 18)
-                    .attr("width",  18)
-                    .attr("height", 18)
-                    .style("fill",  color);
+                    legend.selectAll("li").remove();
 
-                // draw legend text
-                legend.append("text")
-                    .attr("x",      width - 24)
-                    .attr("y",      9)
-                    .attr("dy",     ".35em")
-                    .style("text-anchor", "end")
-                    .text(function (d) { return d; });
+                    const categories = legend.selectAll("li")
+                        .data(color.domain())
+                        .enter().append("li")
+                        .attr("class", function (d) {
+                            return ["legend",
+                                stream_categories.indexOf(d) === -1 ? "useless" : ""
+                            ].join(" ").trim();
+                        })
+                        .attr("title", function (d) { return d; })
+                        .text(function (d) { return d; });
+
+                    categories.append("span")
+                        .style("background-color", color);
+                }
+
+                if (streams.length) {
+                    draw(streams[0], 0, streams);
+                }
             },
 
             resize: function (width, height) {
