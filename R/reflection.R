@@ -3,40 +3,30 @@ library(miniUI);
 library(shiny);
 library(uuid);
 
-unwrapSelections <- function (selection) {
-  return(selection$text);
-}
-
-
-is_variable <- function(x) {
-  return(is.name(x) && !identical(x, quote(`<-`)));
-}
-
 
 loop <- function (text) {
-  options(stringsAsFactors = FALSE);
-
   # Prepare
   variables <- list();
 
-  functions <- data.frame(matrix(ncol = 7, nrow = 0));
-  colnames(functions) <- c("id", "name", "line", "signature", "arguments", "depth", "breakpoint");
+  functions <- data.frame(matrix(ncol = 8, nrow = 0));
+  colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
 
   hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
   colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
 
   # Run loop
-  line_no <- 1;
+  line_no1 <- 1;
 
-  while (line_no < length(text) + 1) {
-    line_no2 <- line_no;
+  while (line_no1 < length(text) + 1) {
+    line_no2 <- line_no1;
+    break_ <- FALSE;
 
-    while (line_no2 < length(text) + 1) {
+    while (!break_ && line_no2 < length(text) + 1) {
       tryCatch(
         expr = {
-          line <- paste0(text[line_no:line_no2], collapse="\n");
+          line <- paste0(text[line_no1:line_no2], collapse="\n");
 
-          row <- parse(text=paste0(text[line_no:line_no2], collapse="\n"));
+          row <- parse(text=paste0(text[line_no1:line_no2], collapse="\n"));
 
           if (!is.language(row) || length(row) == 0) {
             break;
@@ -49,13 +39,21 @@ loop <- function (text) {
           c(variables, functions, hypotheses) %<-% recursion(row, variables, functions, hypotheses)
 
           if (nrow(functions) > before_funcs) {
-            functions[(before_funcs + 1):nrow(functions), ]$line <- line_no;
+            functions[(before_funcs + 1):nrow(functions), ]$lines <- list(list(line_no1, line_no2));
             functions[nrow(functions), ]$signature <- line;
           }
 
           break;
         },
-        warning = function (...) {},
+        warning = function (w) {
+          if (strict) {
+            stop(w$message);
+
+          } else {
+            warning(w);
+            break_ <<- TRUE;
+          }
+        },
         error = function (e) {
           if (grepl("unexpected end of input", e$message)) {
             line_no2 <<- line_no2 + 1;
@@ -68,23 +66,23 @@ loop <- function (text) {
       )
     }
 
-    line_no <- line_no2 + 1;
+    line_no1 <- line_no2 + 1;
   }
 
-  return(list(variables, functions, hypotheses));
+  list(variables, functions, hypotheses);
 }
 
 
 find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
-  functions <- data.frame(matrix(ncol = 7, nrow = 0));
-  colnames(functions) <- c("id", "name", "line", "signature", "arguments", "depth", "breakpoint");
+  functions <- data.frame(matrix(ncol = 8, nrow = 0));
+  colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
 
   c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
                                             addition_mode = TRUE)
 
   con_columns <- collect_columns(variables, functions);
 
-  con_column_ids <- lapply(con_columns, function(column) { return(column$id); });
+  con_column_ids <- lapply(con_columns, function (column) column$id);
 
   if (length(exp) == 3) {
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
@@ -148,7 +146,7 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
     hypotheses[index,] <- hypothesis;
   }
 
-  return(list(index, hypotheses, variables))
+  list(index, hypotheses, variables);
 }
 
 
@@ -175,7 +173,7 @@ collect_columns <- function (variables, functions) {
     }
   }
 
-  return(array);
+  array;
 }
 
 
@@ -183,15 +181,32 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
   var <- NULL;
   index <- length(variables) + 1;
 
-  if (length(variables) > 0 && !force)
-    for (i in 1:length(variables)) {
-      old_var <- variables[[i]];
+  if (!force) {
+    packages <- find(name);
 
-      if (old_var$name == name && (is.null(type_constraint) || any(old_var$type == type_constraint))) {
-        var <- old_var;
-        index <- i;
-      }
+    # If the name can be found in the packages
+    is_function_name <- !!length(packages);
+
+    if (is_function_name && do_eval) {
+      # If the name can _only_ be found in the packages
+      is_function_name <- !length(setdiff(grep("package:", packages), 1:length(packages)));
     }
+
+    if (length(variables) > 0)
+      for (i in 1:length(variables)) {
+        old_var <- variables[[i]];
+
+        if (old_var$name == name && (is.null(type_constraint) || any(old_var$type == type_constraint))) {
+          is_function_name <- FALSE;  # having the variable by the name overrules the function name search (probably)
+          var <- old_var;
+          index <- i;
+        }
+      }
+
+    if (is_function_name) {
+      return(list(index, variables))
+    }
+  }
 
   if (index > length(variables)) {
     if (!add) {
@@ -212,8 +227,9 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
     variables[[index]] <- var;
   }
 
-  return(list(index, variables))
+  list(index, variables);
 }
+
 
 argument_recursion <- function (args, func,
                                 variables, functions, hypotheses,
@@ -271,7 +287,7 @@ argument_recursion <- function (args, func,
     }
   }
 
-  return(list(func, variables, functions, hypotheses))
+  list(func, variables, functions, hypotheses);
 }
 
 
@@ -341,7 +357,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
       variables[[col_index]]$name,
       '~',
       paste0(
-        lapply(columns, function(var) { return(var$name); }),
+        lapply(columns, function (var) var$name),
         collapse = ' + '
       )
     ),
@@ -356,9 +372,10 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
   func <- list(
     id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
     name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
-    line =        NA,
-    signature =   NA, # TODO: come up with
-    arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function(var) { return(var$id); }))),
+    lines =       NA,
+    signature =   NA,
+    packages =    NA,
+    arguments =   list(append(list(variables[[var_index]]$id, variables[[col_index]]$id), lapply(columns, function (var) var$id))),
     depth =       depth - addition_mode,
     breakpoint =  NA
   );
@@ -367,7 +384,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
   functions[nrow(functions) + 1, ] <- func;
 
-  return(list(variables, functions, hypotheses));
+  list(variables, functions, hypotheses);
 }
 
 
@@ -453,7 +470,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     } else if (before_funcs - nrow(functions) == 1 &&
                functions[nrow(functions), ]$name == "~") {
-      selector <- apply(hypotheses, 1, function (hyp) { return(functions[nrow(functions)]$id %in% hyp$functions); });
+      selector <- apply(hypotheses, 1, function (hyp) functions[nrow(functions)]$id %in% hyp$functions);
 
       variables[[var_index]]$value <- hypotheses[selector, ]$id;
       variables[[var_index]]$type <- "formula";
@@ -462,7 +479,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     } else if (nrow(hypotheses)) {
       for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
-        selector <- apply(hypotheses, 1, function (hyp) { return(func_id %in% hyp$functions); });
+        selector <- apply(hypotheses, 1, function (hyp) func_id %in% hyp$functions);
 
         if (nrow(hypotheses[selector, ])) {
           variables[[var_index]]$type <- "model";
@@ -492,7 +509,7 @@ recursion <- function (exp, variables, functions, hypotheses,
           variables[[var_index]]$value <- eval(exp[[3]]);
         },
         warning = function (...) {},
-        error = function(...) {},
+        error = function (...) {},
         finally = {}
       )
     }
@@ -554,8 +571,9 @@ recursion <- function (exp, variables, functions, hypotheses,
       func <- list(
         id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
         name =        paste0(as.character(exp)[c(2, 1, 3)], collapse = ""),
-        line =        NA,
-        signature =   NA, # TODO: come up with
+        lines =       NA,
+        signature =   NA,
+        packages =    NA,
         arguments =   list(list(variables[[var_index]]$id, variables[[col_index]]$id)),
         depth =       depth - addition_mode,
         breakpoint =  NA
@@ -582,12 +600,13 @@ recursion <- function (exp, variables, functions, hypotheses,
     # functions[[length(functions) + 1]] <- exp;
 
   # Is library import call
-  } else if (is.call(exp) && identical(exp[[1]], quote(`library`))) {
-    # Skip retrievals of property
+  } else if (is.call(exp) && (identical(exp[[1]], quote(`library`)) || identical(exp[[1]], quote(`require`))) && !force_as_function) {
+    eval(exp);
 
   # Is library name call
   } else if (is.call(exp) && identical(exp[[1]], quote(`::`))) {
     # Shouldn't really ever pop up
+    # TOOD: use to hint the exact package the function is being imported from?
 
   # Is paranthesis (?!)
   } else if (is.call(exp) && identical(exp[[1]], quote(`(`))) {
@@ -616,11 +635,23 @@ recursion <- function (exp, variables, functions, hypotheses,
       func_name <- as.character(exp[[1]]);
     }
 
+    packages <- find(func_name);
+
+    packages <- as.list(packages[grep("package:", packages)])
+
+    if (length(packages)) {
+      packages <- list(packages);
+
+    } else {
+      packages <- NA;
+    }
+
     func <- list(
       id =          paste0(c("f", UUIDgenerate()), collapse = "-"),
       name =        func_name,
-      line =        NA,
+      lines =       NA,
       signature =   paste0(c(as.character(exp[[1]]), "(" , paste0(as.character(exp[2:length(exp)]), collapse = ", "), ")"), collapse = ""),
+      packages =    packages,
       arguments =   list(),
       depth =       depth - addition_mode,
       breakpoint =  NA
@@ -679,64 +710,109 @@ recursion <- function (exp, variables, functions, hypotheses,
 
   }
 
-  return(list(variables, functions, hypotheses))
+  list(variables, functions, hypotheses)
 }
 
 
-addin <- function() {
+addin <- function () {
+  options(stringsAsFactors = FALSE);
+
   ui = bootstrapPage(RDataFlowOutput("graph"))
 
-  server <- function(input, output, session) {
+  do_eval <<- FALSE;
+  strict <<- FALSE;
+  failing_context_notification_id <<- NULL
+
+  server <- function (input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);
+
     old_path <- "";
-    old_hash <- ""
+    old_hash <- "";
 
     observe({
-      invalidatePeriodically()
+      invalidatePeriodically();
 
-      c(id, path, textContents, selections) %<-% rstudioapi::getActiveDocumentContext()[0:4];
+      tryCatch(
+        expr = {
+          c(id, path, textContents, selections) %<-% rstudioapi::getSourceEditorContext()[0:4];
+          if (!is.null(failing_context_notification_id)) {
+            removeNotification(failing_context_notification_id)
+            failing_context_notification_id <<- NULL
+          }
 
-      hash <- digest::digest(textContents, "md5");
+          file_name <- tail(strsplit(path, "/")[[1]], n = 1);
+          hash <- digest::digest(textContents, "md5");
 
-      if (path != old_path || hash != old_hash)
-        tryCatch(
-          #selections <- lapply(selections, unwrapSelections);
+          if (path != old_path || hash != old_hash) {
+            loading_notification_id <- showNotification(
+              paste0(c("Loading", file_name), collapse = " "),
+              duration = NA
+            )
 
-          expr = {
-            c(variables, functions, hypotheses) %<-% loop(textContents);
+            tryCatch(
+              expr = withCallingHandlers(
+                expr = {
+                  c(variables, functions, hypotheses) %<-% loop(textContents);
 
-            output$graph <- renderRDataFlow({
-              RDataFlow(list(
-                type = "success",
-                variables = variables,
-                functions = unname(apply(functions, 1, as.list)),
-                hypotheses = unname(apply(hypotheses, 1, as.list))
-              ))
-            })
+                  output$graph <- renderRDataFlow({
+                    RDataFlow(list(
+                      variables = variables,
+                      functions = unname(apply(functions, 1, as.list)),
+                      hypotheses = unname(apply(hypotheses, 1, as.list))
+                    ))
+                  });
+                },
+                warning = function (w) showNotification(w$message, type = "warning")
+              ),
 
-            old_path <<- path;
-            old_hash <<- hash;
-          },
-          warning = function (w) {
-            RDataFlow(list(
-              type = "warning",
-              message = w$message
-            ))
-          },
-          error = function (e) {
-            RDataFlow(list(
+              error = function (e) showNotification(e$message, type = "error", duration = NA),
+
+              finally = {
+                removeNotification(loading_notification_id)
+
+                old_path <<- path;
+                old_hash <<- hash;
+              }
+            );
+          }
+        },
+        error = function (e) {
+          if (is.null(failing_context_notification_id)) {
+            failing_context_notification_id <<- showNotification(
+              paste0(c("Error getting context from RStudio:", e$message),
+                     collapse = " "),
               type = "error",
-              message = e$message
-            ))
-          },
-          finally = {}
-        )
+              duration = NA
+            )
+          }
+        }
+      );
     })
 
     observeEvent(
       input$goto,
       {
-        rstudioapi::navigateToFile(old_path, input$goto, 0);
+        c(line_no1, line_no2) %<-% lapply(input$goto, as.integer);
+
+        rstudioapi::setSelectionRanges(
+          list(rstudioapi::document_range(c(line_no1, 0), c(line_no2, Inf)))
+        )
+      }
+    )
+
+    observeEvent(
+      input$set_strict,
+      {
+        strict <<- input$set_strict;
+      }
+    )
+
+    observeEvent(
+      input$help,
+      {
+        c(package, func_name) %<-% input$help;
+
+        print(help(func_name, package = tail(strsplit(package, ":")[[1]], n = 1)))
       }
     )
   }

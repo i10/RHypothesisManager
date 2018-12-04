@@ -3,14 +3,31 @@ html, body {
     width: 100%;
 }
 
+body {
+    overflow: hidden;
+}
+
 #graph {
     display: -webkit-flex;
     -webkit-flex-direction: row;
-    -webkit-align-items: flex-start;
+    -webkit-flex-wrap: wrap;
+    /*-webkit-align-items: flex-start;*/
 }
 
 #graph > * {
     -webkit-flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+#menu {
+    width: 100%;
+    height: 30px;
+
+    background-color: lightgray;
+}
+
+#menu > lablel {
+    display: inline-block;
 }
 
 #selector {
@@ -18,16 +35,69 @@ html, body {
 }
 
 #wrapper {
-    overflow: scroll;
+    overflow: auto;
     -webkit-flex-grow: 1;
     -webkit-flex-basis: calc(100% - 360px);
 
-    height: 100%;
+    height: calc(100% - 30px);
+}
+
+#wrapper > svg {
+    display: block;
+    margin: 0 auto;
 }
 
 #legend {
     width: 200px;
+    padding-right: 5px;
+
+    text-align: right;
+}
+
+#selector,
+#legend {
+    overflow-y: auto;
+
+    padding-top: 5px;
+
+    background-color: lightgray;
+}
+
+#selector h3,
+#legend h3 {
+    font-size: 1.5em;
+    margin-top: 0;
+
+    text-transform: lowercase;
+}
+
+#selector > ul,
+#legend > ul {
     padding: 0;
+}
+
+#selector > ul > li,
+#legend > ul > li {
+    display: block;
+    overflow: hidden;
+
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#selector h3,
+#selector li {
+    padding-left: 5px;
+}
+
+#selector li:hover {
+    cursor: pointer;
+}
+
+#selector li.chosen {
+    font-weight: bold;
+
+    background-color: darkgray;
 }
 
 /*SVG stuff*/
@@ -35,6 +105,10 @@ html, body {
     stroke: #999;
     fill: transparent;
     stroke-opacity: 0.6;
+}
+
+.node:hover {
+    cursor: pointer;
 }
 
 .node circle {
@@ -63,34 +137,49 @@ text {
 /*SVG stuff*/
 
 #tooltip {
+    padding: 5px;
+    border-radius: 5px;
+    border: 1px solid dimgray;
+
     background: #fd7;
     white-space: pre !important;
     font-family: monospace !important;
 }
 
+#tooltip .comment {
+    font-style: italic;
+}
+
+#tooltip .comment > span {
+    font-style: normal;
+    font-weight: bold;
+}
+
+#tooltip hr {
+    border: inherit;
+    margin: 0.5em;
+}
+
 .legend {
     position: relative;
-    display: block;
 
     padding-right: calc(1em + 5px);
-
-    overflow: hidden;
-
-    text-align: right;
-    white-space: nowrap;
-    text-overflow: ellipsis;
 }
 
 .legend.useless {
-    display: none;
+    display: none !important;
 }
 
 .legend span:last-child {
     position: absolute;
     display: block;
 
-    right: 2.5px;
+    right: 0;
     top: 2px;
     width: 1em;
     height: 1em;
+}
+
+#shiny-notification-panel {
+    width: 320px;
 }

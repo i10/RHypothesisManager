@@ -4,20 +4,15 @@ HTMLWidgets.widget({
 
     factory: function (el, width, height) {
         // TODO: define shared variables for this instance
+        const container = d3.select(el);
+
+        const menu = container.select("#menu");
+        const svg = container.select("svg");
+        const selector = container.select("#selector > ul");
+        const legend = container.select("#legend > ul");
 
         return {
             renderValue: function (x) {
-                if (x.type === "warning" || x.type === "error") {
-                    window.alert(x.message);
-                    return;
-                }
-
-                const container = d3.select(el);
-
-                const svg = container.select("svg");
-                const selector = container.select("#selector");
-                const legend = container.select("#legend");
-
                 svg.selectAll("*").remove();
                 selector.selectAll("*").remove();
 
@@ -189,23 +184,18 @@ HTMLWidgets.widget({
                         return b.functions.length - a.functions.length;  // Descending order
                     });
 
-                streams.forEach(function (stream, i, arr) {
-                    selector.append("option")
-                        .attr("value", i)
-                        .text(stream.name + ":" + stream.functions.length)
-                });
-
-                selector.on("change", function (d) {
-                    const i = Number(this.value);
-                    draw(streams[i], i, streams);
-                });
+                selector.selectAll("li")
+                    .data(streams).enter()
+                    .append("li")
+                    .text(function (d) { return d.name + ":" + d.functions.length; })
+                    .attr("title", function (d) { return d.name; })
+                    .on("click", draw);
 
                 function draw (stream_, i, arr) {
                     svg.selectAll(".stream").remove();
 
                     const g = svg.append("g")
-                        .attr("class", "stream")
-                        .attr("transform", "translate(" + 0 + "," + 50 + ")");
+                        .attr("class", "stream");
 
                     var stream = d3.stratify()
                         .id(function (d) { return d.id; })
@@ -229,11 +219,6 @@ HTMLWidgets.widget({
                     }
 
                     const breadth = Math.max.apply(null, breadth_seek(Array(depth), nodes));
-
-                    svg.attrs({
-                        width: breadth * 120,
-                        height: depth * 30
-                    });
 
                     const tree = d3.tree().size([breadth * 120, depth * 30]);
 
@@ -278,6 +263,10 @@ HTMLWidgets.widget({
                         })
                         .attr("transform", function (d) {
                             return "translate(" + d.x + "," + d.y + ")";
+                        })
+                        .on("click", function(d) {
+                            const func = d.data.data;
+                            Shiny.setInputValue("goto", func.lines);
                         });
 
                     // adds the circle to the node
@@ -294,10 +283,6 @@ HTMLWidgets.widget({
 
                             if (!func.breakpoint /*&& !func.marker*/ && func.categories.length)
                                 return color(func.categories[0].name);
-                        })
-                        .on("click", function(d) {
-                            const func = d.data.data;
-                            Shiny.setInputValue("goto", func.line);
                         });
 
                     node.append("text")
@@ -309,30 +294,54 @@ HTMLWidgets.widget({
                         .on("mouseover", function(d) {
                             const func = d.data.data;
 
-                            const arguments = func.arguments.reduce(function (acc, e) {
-                                if (e instanceof Object) {
-                                    var name = e.name;
-
-                                    // if (name.length > 20)
-                                    //     name = name.substr(0, 20) + "&hellip;";
-
-                                    acc.push(name);
-
-                                } else if (/*e instanceof String*/ (typeof e) === "string") {
-                                    acc.push("\"" + e + "\"")
-
-                                } else {
-                                    acc.push(e);
-                                }
-
-                                return acc;
-                            }, []);
-
                             tooltip
                                 .style("opacity", 0.9)
-                                .html(func.name + "(" + arguments.join(",<br />" + Array(func.name.length + 2).join(" ")) + ")")
-                                .style("left", (d3.event.pageX) + "px")
-                                .style("top", (d3.event.pageY - 28) + "px");
+                                .style("left", (d3.event.pageX + 10) + "px")
+                                .style("top", (d3.event.pageY - 10) + "px");
+
+                            tooltip.selectAll("*").remove();
+
+                            const comment_re = /# *(.+)$/ig;
+
+                            const comment_start = func.signature.search(comment_re);
+
+                            if (comment_start !== -1) {
+                                const comment = comment_re.exec(func.signature)[1];
+
+                                // TODO: reformat the signature
+                                tooltip.append("p")
+                                    .text(func.signature.substr(0, comment_start).trim());
+
+                                tooltip.append("p")
+                                    .attr("class", "comment")
+                                    .html("<span>Tail comment:</span> " + comment);
+
+                            } else {
+                                tooltip.append("p")
+                                    .text(func.signature);
+                            }
+
+                            if (!!func.packages) {
+                                tooltip.append("hr");
+
+                                const help = tooltip.append("p")
+                                    .text("From packages: ");
+
+                                func.packages.forEach(function (pkg, i, arr) {
+                                    help.append("a")
+                                        .attrs({
+                                            href: pkg,
+                                            class: "help"
+                                        })
+                                        .on("click", function () {
+                                            Shiny.setInputValue("help", [pkg, func.name]);
+                                        })
+                                        .text(pkg);
+
+                                    if (i !== arr.length - 1)
+                                        help.append(",")
+                                });
+                            }
                         })
                         .on("mouseout", function(d) {
                             tooltip.style("opactiy", 0);
@@ -352,6 +361,15 @@ HTMLWidgets.widget({
                             const func = d.data.data;
                             return func.marker;
                         });
+
+                    const bbox = g.node().getBoundingClientRect();
+
+                    g.attr("transform", "translate(" + -(bbox.left - svg.node().offsetLeft - 25) + ", 50)");
+
+                    svg.attrs({
+                        width: bbox.width + 50,
+                        height: bbox.height + 50
+                    });
 
                     const stream_categories = stream_.functions
                         .reduce(function (acc, func, i, arr) {
@@ -376,6 +394,11 @@ HTMLWidgets.widget({
 
                     categories.append("span")
                         .style("background-color", color);
+
+                    selector.selectAll("li")
+                        .attr("class", null)
+                        .filter(function (d, ii) { return ii === i;})
+                        .attr("class", "chosen");
                 }
 
                 if (streams.length) {
