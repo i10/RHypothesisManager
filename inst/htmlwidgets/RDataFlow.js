@@ -15,6 +15,7 @@ HTMLWidgets.widget({
             renderValue: function (x) {
                 svg.selectAll("*").remove();
                 selector.selectAll("*").remove();
+                legend.selectAll("*").remove();
 
                 const defs = svg.append("defs");
 
@@ -364,7 +365,7 @@ HTMLWidgets.widget({
 
                     const bbox = g.node().getBoundingClientRect();
 
-                    g.attr("transform", "translate(" + -(bbox.left - svg.node().offsetLeft - 25) + ", 50)");
+                    g.attr("transform", "translate(" + -(bbox.left + svg.node().parentNode.scrollLeft - svg.node().offsetLeft - 25) + ", 50)");
 
                     svg.attrs({
                         width: bbox.width + 50,
@@ -379,7 +380,7 @@ HTMLWidgets.widget({
                             return arr.indexOf(e) === i;
                         });
 
-                    legend.selectAll("li").remove();
+                    legend.selectAll("*").remove();
 
                     const categories = legend.selectAll("li")
                         .data(color.domain())

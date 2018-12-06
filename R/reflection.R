@@ -4,7 +4,7 @@ library(shiny);
 library(uuid);
 
 
-loop <- function (text) {
+loop <- function (text, interactive = FALSE) {
   # Prepare
   variables <- list();
 
@@ -66,6 +66,10 @@ loop <- function (text) {
       )
     }
 
+    if (interactive) {
+      incProgress(line_no2 - line_no1 + 1)
+    }
+
     line_no1 <- line_no2 + 1;
   }
 
@@ -90,7 +94,8 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
     if (is.name(exp[[2]])) {
       c(dep_column_index, variables) %<-% find_variable(as.character(exp[[2]]), variables,
                                                         add = TRUE,
-                                                        type_constraint = "column");
+                                                        type_constraint = "column",
+                                                        check_shadowing = FALSE);
 
       dep_column_id <- variables[[dep_column_index]]$id;
 
@@ -177,7 +182,8 @@ collect_columns <- function (variables, functions) {
 }
 
 
-find_variable <- function (name, variables, add = FALSE, force = FALSE, type_constraint = NULL) {
+find_variable <- function (name, variables, add = FALSE, force = FALSE, type_constraint = NULL,
+                           check_shadowing = TRUE) {
   var <- NULL;
   index <- length(variables) + 1;
 
@@ -203,7 +209,7 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
         }
       }
 
-    if (is_function_name) {
+    if (is_function_name && check_shadowing) {
       return(list(index, variables))
     }
   }
@@ -744,15 +750,16 @@ addin <- function () {
           hash <- digest::digest(textContents, "md5");
 
           if (path != old_path || hash != old_hash) {
-            loading_notification_id <- showNotification(
-              paste0(c("Loading", file_name), collapse = " "),
-              duration = NA
-            )
 
             tryCatch(
               expr = withCallingHandlers(
                 expr = {
-                  c(variables, functions, hypotheses) %<-% loop(textContents);
+                  withProgress(
+                    expr = c(variables, functions, hypotheses) %<-% loop(textContents, interactive = TRUE),
+                    min = 1,
+                    max = length(textContents),
+                    message = paste0(c("Loading", file_name), collapse = " ")
+                  )
 
                   output$graph <- renderRDataFlow({
                     RDataFlow(list(
@@ -768,8 +775,6 @@ addin <- function () {
               error = function (e) showNotification(e$message, type = "error", duration = NA),
 
               finally = {
-                removeNotification(loading_notification_id)
-
                 old_path <<- path;
                 old_hash <<- hash;
               }
