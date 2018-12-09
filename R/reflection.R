@@ -740,6 +740,7 @@ addin <- function () {
   do_eval <<- FALSE;
   strict <<- FALSE;
   failing_context_notification_id <<- NULL
+  last_error_id <<- NULL
 
   server <- function (input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);
@@ -788,7 +789,7 @@ addin <- function () {
                     lib = regmatches(w$message, regexec("package called ‘(\\w+)’", w$message, perl = TRUE))[[1]][2]
 
                     action = tags$a(href='',
-                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", "', lib, '");'), collapse = ""),
+                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=e$lines), auto_unbox = TRUE), ');'), collapse = ""),
                                     paste0(c("Install the `", lib, "` package"), collapse = ""))
                   }
 
@@ -802,14 +803,26 @@ addin <- function () {
                 if (grepl("there is no package", e$message)) {
                   lib = regmatches(e$message, regexec("package called ‘(\\w+)’", e$message, perl = TRUE))[[1]][2]
 
-                  action = tags$a(href='',
-                                  onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", "', lib, '");'), collapse = ""),
-                                  paste0(c("Install the `", lib, "` package"), collapse = ""))
+                  action = tagList(
+                    tags$a(href='',
+                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=e$lines), auto_unbox = TRUE), ');'), collapse = ""),
+                           paste0(c("Install the `", lib, "` package"), collapse = "")),
+                    tags$br(),
+                    tags$a(href='',
+                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                           paste0(c("Comment the lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
+                  )
 
                 } else if ("custom_code" %in% names(e)) {
-                  action = tags$a(href='',
-                                  onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
-                                  paste0(c("Comment the expression on lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
+                  action = tagList(
+                    tags$a(href='',
+                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("goto", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                           "Inspect"),
+                    tags$br(),
+                    tags$a(href='',
+                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                           paste0(c("Comment the lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
+                  )
 
                 } else if ("lines" %in% names(e)) {
                   # TODO: split into the debug mode with goto action towards the faulting code and production mode with complete masking of internal problems?
@@ -818,7 +831,7 @@ addin <- function () {
                                        " triggering the following exception:\n\"", e$message, "\""), collapse = "")
                 }
 
-                showNotification(e$message, action = action, type = "error", duration = NA)
+                last_error_id <<- showNotification(e$message, action = action, type = "error", duration = NA)
               },
 
               finally = {
@@ -863,6 +876,8 @@ addin <- function () {
         )
 
         rstudioapi::setCursorPosition(rstudioapi::document_position(line_no1, -1L))
+
+        removeNotification(last_error_id)
       }
     )
 
@@ -886,18 +901,29 @@ addin <- function () {
       input$install,
       {
         tryCatch(expr = {
-          lib <- input$install
+          lines <- input$install$lines
+          lib <- input$install$name
 
           install.packages(lib)
 
-          showNotification(paste0(c("Successfully installed `", lib, "`"), collapse =""))
+          removeNotification(last_error_id)
 
           library(lib, character.only = TRUE)
 
+          showNotification(paste0(c("Successfully installed `", lib, "`"), collapse =""))
+
           old_hash <<- ""
         },
-        warning = function (w) showNotification(w$message, type = "warning"),
-        error = function (e) showNotification(e$message, type = "error"))
+        error = function (e) {
+          last_error_id <<- showNotification(
+            e$message,
+            action=tags$a(href='',
+                          onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(lines), ');'), collapse = ""),
+                          paste0(c("Comment the lines ", lines[1], ":", lines[2]), collapse = "")),
+            type = "error",
+            duration = NA
+          )
+        })
       }
     )
   }
