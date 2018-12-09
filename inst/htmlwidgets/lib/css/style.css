@@ -183,3 +183,8 @@ text {
 #shiny-notification-panel {
     width: 320px;
 }
+
+.shiny-notification .shiny-notification-content-action > a {
+    color: inherit;
+    font-weight: inherit;
+}

@@ -769,10 +769,35 @@ addin <- function () {
                     ))
                   });
                 },
-                warning = function (w) showNotification(w$message, type = "warning")
+                warning = function (w) {
+                  action = NULL
+
+                  if (grepl("there is no package", w$message)) {
+                    lib = regmatches(w$message, regexec("package called ‘(\\w+)’", w$message, perl = TRUE))[[1]][2]
+
+                    action = tags$a(href='',
+                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", "', lib, '");'), collapse = ""),
+                                    paste0(c("Install the `", lib, "` package"), collapse = ""))
+                  }
+
+                  showNotification(w$message, action = action, type = "warning")
+                }
               ),
 
-              error = function (e) showNotification(e$message, type = "error", duration = NA),
+              error = function (e) {
+                action = NULL;
+
+                if (grepl("there is no package", e$message)) {
+                  lib = regmatches(e$message, regexec("package called ‘(\\w+)’", e$message, perl = TRUE))[[1]][2]
+
+                  action = tags$a(href='',
+                                  onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", "', lib, '");'), collapse = ""),
+                                  paste0(c("Install the `", lib, "` package"), collapse = ""))
+
+                }
+
+                showNotification(e$message, action = action, type = "error", duration = NA)
+              },
 
               finally = {
                 old_path <<- path;
@@ -818,6 +843,25 @@ addin <- function () {
         c(package, func_name) %<-% input$help;
 
         print(help(func_name, package = tail(strsplit(package, ":")[[1]], n = 1)))
+      }
+    )
+
+    observeEvent(
+      input$install,
+      {
+        tryCatch(expr = {
+          lib <- input$install
+
+          install.packages(lib)
+
+          showNotification(paste0(c("Successfully installed `", lib, "`"), collapse =""))
+
+          library(lib, character.only = TRUE)
+
+          old_hash <<- ""
+        },
+        warning = function (w) showNotification(w$message, type = "warning"),
+        error = function (e) showNotification(e$message, type = "error"))
       }
     )
   }
