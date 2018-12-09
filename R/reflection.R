@@ -4,6 +4,14 @@ library(shiny);
 library(uuid);
 
 
+own_error <- function (message, custom_code, call = sys.call(-1), ...) {
+  structure(
+    class = c("own_error", "error", "condition"),
+    list(message = message, call = call, custom_code = custom_code, ...)
+  )
+}
+
+
 loop <- function (text, interactive = FALSE) {
   # Prepare
   variables <- list();
@@ -59,6 +67,8 @@ loop <- function (text, interactive = FALSE) {
             line_no2 <<- line_no2 + 1;
 
           } else {
+            e$lines <- c(line_no1, line_no2)
+
             stop(e);  # error rethrow
           }
         },
@@ -216,7 +226,9 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
 
   if (index > length(variables)) {
     if (!add) {
-      stop(paste0(c("The variable `", name, "` has never occured before, but addition has not been granted"), collapse=""));
+      e <- own_error(paste0(c("The variable `", name, "` has never occured before, but addition has not been granted"), collapse=""),
+                     custom_code = 1)
+      stop(e)
     }
 
     var <- list(
@@ -794,6 +806,16 @@ addin <- function () {
                                   onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", "', lib, '");'), collapse = ""),
                                   paste0(c("Install the `", lib, "` package"), collapse = ""))
 
+                } else if ("custom_code" %in% names(e)) {
+                  action = tags$a(href='',
+                                  onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                                  paste0(c("Comment the expression on lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
+
+                } else if ("lines" %in% names(e)) {
+                  # TODO: split into the debug mode with goto action towards the faulting code and production mode with complete masking of internal problems?
+
+                  e$message = paste0(c("Addin has failed to parse the file ", file_name, " \nbecause of lines ", e$lines[1], ":", e$lines[2],
+                                       " triggering the following exception:\n\"", e$message, "\""), collapse = "")
                 }
 
                 showNotification(e$message, action = action, type = "error", duration = NA)
@@ -827,6 +849,20 @@ addin <- function () {
         rstudioapi::setSelectionRanges(
           list(rstudioapi::document_range(c(line_no1, 0), c(line_no2, Inf)))
         )
+      }
+    )
+
+    observeEvent(
+      input$comment,
+      {
+        c(line_no1, line_no2) %<-% lapply(input$comment, as.integer);
+
+        rstudioapi::insertText(
+          lapply(line_no1:line_no2, function (line) rstudioapi::document_position(line, -1L)),
+          "# "
+        )
+
+        rstudioapi::setCursorPosition(rstudioapi::document_position(line_no1, -1L))
       }
     )
 
