@@ -789,7 +789,7 @@ addin <- function () {
                     lib = regmatches(w$message, regexec("package called ‘(\\w+)’", w$message, perl = TRUE))[[1]][2]
 
                     action = tags$a(href='',
-                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=e$lines), auto_unbox = TRUE), ');'), collapse = ""),
+                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=w$lines), auto_unbox = TRUE), ');'), collapse = ""),
                                     paste0(c("Install the `", lib, "` package"), collapse = ""))
                   }
 
