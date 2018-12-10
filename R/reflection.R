@@ -785,6 +785,14 @@ addin <- function () {
                     message = paste0(c("Loading", file_name), collapse = " ")
                   )
 
+                  # Clear the undumpable constant values from the variables list
+                  # TODO: find a way to sneak the `jsonlite.toJSON(..., force = TRUE)` into the shiny calls
+                  for (i in 1:length(variables))
+                    if (variables[[i]]$type == "constant" &&
+                        !is.null(variables[[i]]$value) &&
+                        !tryCatch(expr = { jsonlite::toJSON(variables[[i]]); TRUE }, error = function(...) FALSE))
+                      variables[[i]]$value = NULL
+
                   output$graph <- renderRDataFlow({
                     RDataFlow(list(
                       variables = variables,
