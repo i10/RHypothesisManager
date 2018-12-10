@@ -339,7 +339,8 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
   c(col_index, variables) %<-% find_variable(col2_name, variables,
                                              add = TRUE,
                                              force = do_force_add,
-                                             type_constraint = "column");
+                                             type_constraint = "column",
+                                             check_shadowing = FALSE);
 
   variables[[col_index]]$type <- "column";
 
@@ -586,7 +587,8 @@ recursion <- function (exp, variables, functions, hypotheses,
       c(col_index, variables) %<-% find_variable(as.character(exp[[3]]), variables,
                                                  add = TRUE,
                                                  force = !length(variables[[var_index]]$columns),
-                                                 type_constraint = "column");
+                                                 type_constraint = "column",
+                                                 check_shadowing = FALSE);
 
       variables[[col_index]]$generation <- variables[[var_index]]$generation + 1;
       variables[[col_index]]$type <- "column";
