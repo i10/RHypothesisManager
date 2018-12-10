@@ -537,12 +537,21 @@ recursion <- function (exp, variables, functions, hypotheses,
     # data[data$col1 == value, "col2"]
     if (length(exp) == 4) {
       col_name <- exp[[4]];
+      lookup <- exp[[3]];
 
       # data[data$col1 == value, ] <- but w/o the $ in the end
-      if (missing(col_name)) {
+      # data[, smth] <- if smth is not a name of the column
+      if (missing(col_name) || (missing(lookup) && !is.atomic(col_name))) {
         c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
                                                            addition_mode = addition_mode, depth = depth,
                                                            force_as_function = TRUE);
+
+      # data[, "col"]
+      } else if (missing(lookup) && is.atomic(col_name)) {
+        exp[[1]] <- quote(`$`)
+        exp[[3]] <- NULL
+        c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
+                                                           addition_mode = addition_mode, depth = depth - 1);
 
       } else {
         c(variables, functions, hypotheses) %<-% hypothesis_subroutine(exp, variables, functions, hypotheses,
