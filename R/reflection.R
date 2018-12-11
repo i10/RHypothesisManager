@@ -533,7 +533,15 @@ recursion <- function (exp, variables, functions, hypotheses,
     if (variables[var_index, ]$type == "constant") {
       tryCatch(
         expr = {
-          variables[var_index, ]$value <- eval(exp[[3]]);
+          evaluation <- eval(exp[[3]]);
+
+          if (is.vector(evaluation))
+            evaluation <- list(evaluation)
+
+          else if (is.null(evaluation))
+            evaluation <- NA
+
+          variables[var_index, ]$value <- evaluation;
         },
         warning = function (...) {},
         error = function (...) {},

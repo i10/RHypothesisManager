@@ -76,7 +76,7 @@ HTMLWidgets.widget({
                     }
 
                     function argument_recursion (acc, arg, i, arr) {
-                        if ((arg instanceof Object) && arg.id[0] === "f") {
+                        if ((arg instanceof Object) && !(arg instanceof Array) && arg.id[0] === "f") {
                             return arg.arguments.reduce(argument_recursion, acc);
                         }
 
@@ -89,7 +89,7 @@ HTMLWidgets.widget({
 
                     const args = func.arguments
                         .reduce(argument_recursion, [])
-                        .filter(function (arg) { return (arg instanceof Object) && arg.id[0] === "v"; })
+                        .filter(function (arg) { return (arg instanceof Object) && !(arg instanceof Array) && arg.id[0] === "v"; })
                         .concat(products);
 
                     const vars = args
