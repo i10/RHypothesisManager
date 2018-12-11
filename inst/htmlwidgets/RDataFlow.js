@@ -10,6 +10,12 @@ HTMLWidgets.widget({
         const svg = container.select("svg");
         const selector = container.select("#selector > ul");
         const legend = container.select("#legend > ul");
+        const tooltip = container.select("#tooltip")
+            .on("mouseleave", function () {
+                tooltip.style("display", "none");
+            });
+
+        const tooltip_content = tooltip.select("div");
 
         return {
             renderValue: function (x) {
@@ -19,9 +25,8 @@ HTMLWidgets.widget({
 
                 const defs = svg.append("defs");
 
-                const tooltip = container.select("#tooltip")
-                    .html("")
-                    .style("opacity", 0);
+                tooltip.attr("style", null);
+                tooltip_content.selectAll("*").remove();
 
                 const variables = x.variables,
                       functions = x.functions,
@@ -296,11 +301,13 @@ HTMLWidgets.widget({
                             const func = d.data.data;
 
                             tooltip
-                                .style("opacity", 0.9)
-                                .style("left", (d3.event.pageX + 10) + "px")
-                                .style("top", (d3.event.pageY - 10) + "px");
+                                .styles({
+                                    "display": "block",
+                                    "left": (d3.event.pageX) + "px",
+                                    "top": (d3.event.pageY - 20) + "px"
+                                });
 
-                            tooltip.selectAll("*").remove();
+                            tooltip_content.selectAll("*").remove();
 
                             const comment_re = /# *(.+)$/ig;
 
@@ -310,22 +317,22 @@ HTMLWidgets.widget({
                                 const comment = comment_re.exec(func.signature)[1];
 
                                 // TODO: reformat the signature
-                                tooltip.append("p")
+                                tooltip_content.append("p")
                                     .text(func.signature.substr(0, comment_start).trim());
 
-                                tooltip.append("p")
+                                tooltip_content.append("p")
                                     .attr("class", "comment")
                                     .html("<span>Tail comment:</span> " + comment);
 
                             } else {
-                                tooltip.append("p")
+                                tooltip_content.append("p")
                                     .text(func.signature);
                             }
 
                             if (!!func.packages) {
-                                tooltip.append("hr");
+                                tooltip_content.append("hr");
 
-                                const help = tooltip.append("p")
+                                const help = tooltip_content.append("p")
                                     .text("From packages: ");
 
                                 func.packages.forEach(function (pkg, i, arr) {
@@ -344,8 +351,16 @@ HTMLWidgets.widget({
                                 });
                             }
                         })
-                        .on("mouseout", function(d) {
-                            tooltip.style("opactiy", 0);
+                        .on("mouseout", function (d) {
+                            const x = d3.event.pageX;
+                            const y = d3.event.pageY;
+
+                            const bbox = tooltip.node().getBoundingClientRect();
+
+                            // if (!(x >= bbox.left - 10 && x <= bbox.right + 10 && y >= bbox.top - 10 && y <= bbox.bottom + 10)) {
+                            if (!(x >= bbox.left && x <= bbox.right && y >= bbox.top && y <= bbox.bottom)) {
+                                tooltip.style("display", "none");
+                            }
                         })
                         .text(function (d) {
                             const func = d.data.data;

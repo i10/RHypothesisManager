@@ -73,7 +73,11 @@ RDataFlow_html <- function(id, style, class, ...) {
       tag("h3", list("Hypotheses")),
       tag("ul", list())
     )),
-    tag("div", list(id="tooltip", class="tooltip"))
+    tag("div", list(
+      id="tooltip",
+      class="tooltip",
+      tag("div", list())
+    ))
   ))
 }
 
