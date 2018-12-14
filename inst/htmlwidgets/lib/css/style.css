@@ -85,13 +85,14 @@ body {
     text-overflow: ellipsis;
 }
 
+#selector li:hover,
+#legend li:hover {
+    cursor: pointer;
+}
+
 #selector h3,
 #selector li {
     padding-left: 5px;
-}
-
-#selector li:hover {
-    cursor: pointer;
 }
 
 #selector li.chosen {
@@ -194,4 +195,14 @@ text {
 .shiny-notification .shiny-notification-content-action > a {
     color: inherit;
     font-weight: inherit;
+}
+
+.modal .footnote {
+    display: inline-block;
+
+    margin: 0 5px 0 0;
+
+    vertical-align: bottom;
+    font-size: 0.75em;
+    color: dimgray;
 }

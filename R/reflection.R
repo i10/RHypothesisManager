@@ -95,9 +95,18 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
   c(variables, functions, h) %<-% recursion(exp[[length(exp)]], variables, functions, data.frame(),
                                             addition_mode = TRUE)
 
-  con_columns <- collect_columns(variables, functions);
+  if (nrow(functions)) {
+    con_column_ids <- lapply(collect_columns(variables, functions),
+                             function (column) column$id)
 
-  con_column_ids <- lapply(con_columns, function (column) column$id);
+  } else if (is.name(exp[[length(exp)]])) {
+    c(con_column_index, variables) %<-% find_variable(as.character(exp[[length(exp)]]), variables,
+                                                      add = TRUE,
+                                                      type_constraint = "column",
+                                                      check_shadowing = FALSE)
+
+    con_column_ids <- list(variables[con_column_index, ]$id)
+  }
 
   if (length(exp) == 3) {
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
@@ -776,6 +785,9 @@ addin <- function () {
 
     old_path <- "";
     old_hash <- "";
+    variables <- NULL
+    functions <- NULL
+    hypotheses <- NULL
 
     observe({
       invalidatePeriodically();
@@ -797,24 +809,28 @@ addin <- function () {
               expr = withCallingHandlers(
                 expr = {
                   withProgress(
-                    expr = c(variables, functions, hypotheses) %<-% loop(textContents, interactive = TRUE),
+                    expr = c(vv, ff, hh) %<-% loop(textContents, interactive = TRUE),
                     min = 1,
                     max = length(textContents),
                     message = paste0(c("Loading", file_name), collapse = " ")
                   )
 
+                  variables <<- vv
+                  functions <<- ff
+                  hypotheses <<- hh
+
                   # Clear the undumpable constant values from the variables list
                   # TODO: find a way to sneak the `jsonlite.toJSON(..., force = TRUE)` into the shiny calls
-                  dumpability_selector = apply(variables, 1, function (v) v$type != "constant" || is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
+                  dumpability_selector = apply(vv, 1, function (v) v$type != "constant" || is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
 
                   if (!all(dumpability_selector))
-                    variables[!dumpability_selector, ]$value <- NA
+                    vv[!dumpability_selector, ]$value <- NA
 
                   output$graph <- renderRDataFlow({
                     RDataFlow(list(
-                      variables = unname(apply(variables, 1, as.list)),
-                      functions = unname(apply(functions, 1, as.list)),
-                      hypotheses = unname(apply(hypotheses, 1, as.list))
+                      variables = unname(apply(vv, 1, as.list)),
+                      functions = unname(apply(ff, 1, as.list)),
+                      hypotheses = unname(apply(hh, 1, as.list))
                     ))
                   });
                 },
@@ -824,8 +840,8 @@ addin <- function () {
                   if (grepl("there is no package", w$message)) {
                     lib = regmatches(w$message, regexec("package called ‘(\\w+)’", w$message, perl = TRUE))[[1]][2]
 
-                    action = tags$a(href='',
-                                    onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=w$lines), auto_unbox = TRUE), ');'), collapse = ""),
+                    action = tags$a(href='#',
+                                    onclick=paste0(c('Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=w$lines), auto_unbox = TRUE), ');'), collapse = ""),
                                     paste0(c("Install the `", lib, "` package"), collapse = ""))
                   }
 
@@ -840,23 +856,23 @@ addin <- function () {
                   lib = regmatches(e$message, regexec("package called ‘(\\w+)’", e$message, perl = TRUE))[[1]][2]
 
                   action = tagList(
-                    tags$a(href='',
-                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=e$lines), auto_unbox = TRUE), ');'), collapse = ""),
+                    tags$a(href='#',
+                           onclick=paste0(c('Shiny.setInputValue("install", ', jsonlite::toJSON(list(name=lib, lines=e$lines), auto_unbox = TRUE), ');'), collapse = ""),
                            paste0(c("Install the `", lib, "` package"), collapse = "")),
                     tags$br(),
-                    tags$a(href='',
-                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                    tags$a(href='#',
+                           onclick=paste0(c('Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
                            paste0(c("Comment the lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
                   )
 
                 } else if ("custom_code" %in% names(e)) {
                   action = tagList(
-                    tags$a(href='',
-                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("goto", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                    tags$a(href='#',
+                           onclick=paste0(c('Shiny.setInputValue("goto", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
                            "Inspect"),
                     tags$br(),
-                    tags$a(href='',
-                           onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
+                    tags$a(href='#',
+                           onclick=paste0(c('Shiny.setInputValue("comment", ', jsonlite::toJSON(e$lines), ');'), collapse = ""),
                            paste0(c("Comment the lines ", e$lines[1], ":", e$lines[2]), collapse = ""))
                   )
 
@@ -934,6 +950,67 @@ addin <- function () {
     )
 
     observeEvent(
+      input$edit_hypothesis,
+      {
+        hyp <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
+
+        showModal(modalDialog(
+          title = paste0(c("Edit hypothesis", hyp$name), collapse = " "),
+          if (!is.null(hyp$columns[[1]]$dependant)) {
+            var <- as.list(variables[variables$id == hyp$columns[[1]]$dependant, ])
+            tagList(
+              textInput(var$id, var$name, value = var$name),
+              tags$hr()
+            )
+          },
+          tagList(list = lapply(hyp$columns[[1]]$control, function (col_id) {
+            var <- as.list(variables[variables$id == col_id, ])
+            textInput(var$id, var$name, value = var$name)
+          })),
+          footer = tagList(
+            tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
+            modalButton("Cancel"),
+            actionButton("replace_hypothesis", "OK")
+          )
+        ))
+      }
+    )
+
+    observeEvent(
+      input$replace_hypothesis,
+      {
+        removeModal()
+
+        mapping <- list()
+
+        for (name in names(input))
+          if (startsWith(name, "v-")) {
+            var <- as.list(variables[variables$id == name, ])
+
+            mapping[var$name] <- input[[name]]
+          }
+
+        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]] && f$depth == 1)
+
+        if (any(function_selector)) {
+          ff = functions[function_selector, ]
+
+          for (i in 1:nrow(ff)) {
+            func <- as.list(ff[i,])
+
+            signature <- func$signature
+            range <- rstudioapi::document_range(c(func$lines[[1]][[1]], 0), c(func$lines[[1]][[2]], Inf))
+
+            for (old_name in names(mapping))
+              signature <- gsub(old_name, mapping[old_name], signature)
+
+            rstudioapi::insertText(range, signature)
+          }
+        }
+      }
+    )
+
+    observeEvent(
       input$install,
       {
         tryCatch(expr = {
@@ -953,8 +1030,8 @@ addin <- function () {
         error = function (e) {
           last_error_id <<- showNotification(
             e$message,
-            action=tags$a(href='',
-                          onclick=paste0(c('event.preventDefault(); Shiny.setInputValue("comment", ', jsonlite::toJSON(lines), ');'), collapse = ""),
+            action=tags$a(href='#',
+                          onclick=paste0(c('Shiny.setInputValue("comment", ', jsonlite::toJSON(lines), ');'), collapse = ""),
                           paste0(c("Comment the lines ", lines[1], ":", lines[2]), collapse = "")),
             type = "error",
             duration = NA

@@ -34,7 +34,7 @@ HTMLWidgets.widget({
 
                 const color = d3.scaleOrdinal(d3.schemeCategory10);
 
-                color.domain(d3.map(hypotheses, function(d) { return d.name; }).keys());
+                color.domain(d3.map(hypotheses, function(d) { return d.id; }).keys());
 
                 const streams = functions.reduce(function (acc, func, i, arr) {
                     // Scope reduction
@@ -282,13 +282,13 @@ HTMLWidgets.widget({
                             const func = d.data.data;
 
                             if (func.categories.length)
-                                return color(func.categories[0].name);
+                                return color(func.categories[0].id);
                         })
                         .style("stroke", function (d) {
                             const func = d.data.data;
 
                             if (!func.breakpoint /*&& !func.marker*/ && func.categories.length)
-                                return color(func.categories[0].name);
+                                return color(func.categories[0].id);
                         });
 
                     node.append("text")
@@ -389,8 +389,9 @@ HTMLWidgets.widget({
 
                     const stream_categories = stream_.functions
                         .reduce(function (acc, func, i, arr) {
-                            return acc.concat(func.categories.map(function (cat) { return cat.name; }));
+                            return acc.concat(func.categories);
                         }, [])
+                        .map(function (e) { return e.id })
                         .filter(function (e, i, arr) {
                             return arr.indexOf(e) === i;
                         });
@@ -398,18 +399,21 @@ HTMLWidgets.widget({
                     legend.selectAll("*").remove();
 
                     const categories = legend.selectAll("li")
-                        .data(color.domain())
+                        .data(hypotheses)
                         .enter().append("li")
                         .attr("class", function (d) {
                             return ["legend",
-                                stream_categories.indexOf(d) === -1 ? "useless" : ""
+                                stream_categories.indexOf(d.id) === -1 ? "useless" : ""
                             ].join(" ").trim();
                         })
-                        .attr("title", function (d) { return d; })
-                        .text(function (d) { return d; });
+                        .attr("title", function (d) { return d.name; })
+                        .on("click", function (d) {
+                            Shiny.setInputValue("edit_hypothesis", d.id);
+                        })
+                        .text(function (d) { return d.name; });
 
                     categories.append("span")
-                        .style("background-color", color);
+                        .style("background-color", function(d) { return color(d.id); });
 
                     selector.selectAll("li")
                         .attr("class", null)
