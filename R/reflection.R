@@ -990,7 +990,19 @@ addin <- function () {
             mapping[var$name] <- input[[name]]
           }
 
-        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]] && f$depth == 1)
+        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]])
+
+        t <- FALSE
+        for (i in 1:nrow(functions)) {
+          if (function_selector[i] && functions[i, ]$depth > 1) {
+            t <- TRUE
+            function_selector[i] <- FALSE
+
+          } else if (t && functions[i, ]$depth == 1) {
+            function_selector[i] <- TRUE;
+            t <- FALSE
+          }
+        }
 
         if (any(function_selector)) {
           ff = functions[function_selector, ]
