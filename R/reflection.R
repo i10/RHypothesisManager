@@ -1,6 +1,3 @@
-library(miniUI);
-#library(rstudioapi);
-library(shiny);
 library(uuid);
 
 
@@ -12,7 +9,7 @@ own_error <- function (message, custom_code, call = sys.call(-1), ...) {
 }
 
 
-loop <- function (text, interactive = FALSE) {
+parse <- function (text, interactive = FALSE) {
   # Prepare
   variables <- data.frame(matrix(ncol = 8, nrow = 0));
   colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
@@ -35,7 +32,7 @@ loop <- function (text, interactive = FALSE) {
         expr = {
           line <- paste0(text[line_no1:line_no2], collapse="\n");
 
-          row <- parse(text=paste0(text[line_no1:line_no2], collapse="\n"));
+          row <- base::parse(text=paste0(text[line_no1:line_no2], collapse="\n"));
 
           if (!is.language(row) || length(row) == 0) {
             break;
@@ -396,7 +393,7 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
     collapse = ' '
   );
 
-  formula <- parse(text=formula)[[1]];
+  formula <- base::parse(text=formula)[[1]];
 
   c(hyp_index, hypotheses, variables) %<-% find_hypothesis(formula, hypotheses, variables,
                                                            add = TRUE);
@@ -785,6 +782,10 @@ simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE) {
 
 
 addin <- function () {
+  library(miniUI);
+  library(rstudioapi);
+  library(shiny);
+
   options(stringsAsFactors = FALSE);
 
   eval_ <<- FALSE;
@@ -798,7 +799,7 @@ addin <- function () {
       ),
       right = tags$div(
         simpleCheckbox("stop", "Pause the parsing", value = stop_, inline = TRUE),
-        actionButton("cancel", "Exit")
+        actionButton("exit", "Exit")
       )
     ),
     RDataFlowOutput("graph")
@@ -824,7 +825,8 @@ addin <- function () {
 
       tryCatch(
         expr = {
-          c(id, path, textContents, selections) %<-% rstudioapi::getSourceEditorContext()[0:4];
+          c(id, path, textContents, selections) %<-% getSourceEditorContext()[0:4];
+
           if (!is.null(failing_context_notification_id)) {
             removeNotification(failing_context_notification_id)
             failing_context_notification_id <<- NULL
@@ -844,7 +846,7 @@ addin <- function () {
               expr = withCallingHandlers(
                 expr = {
                   withProgress(
-                    expr = c(vv, ff, hh) %<-% loop(textContents, interactive = TRUE),
+                    expr = c(vv, ff, hh) %<-% parse(textContents, interactive = TRUE),
                     min = 1,
                     max = length(textContents),
                     message = paste0(c("Loading", file_name), collapse = " ")
@@ -946,8 +948,8 @@ addin <- function () {
       {
         c(line_no1, line_no2) %<-% lapply(input$goto, as.integer);
 
-        rstudioapi::setSelectionRanges(
-          list(rstudioapi::document_range(c(line_no1, 0), c(line_no2, Inf)))
+        setSelectionRanges(
+          list(document_range(c(line_no1, 0), c(line_no2, Inf)))
         )
       }
     )
@@ -957,16 +959,18 @@ addin <- function () {
       {
         c(line_no1, line_no2) %<-% lapply(input$comment, as.integer);
 
-        rstudioapi::insertText(
-          lapply(line_no1:line_no2, function (line) rstudioapi::document_position(line, -1L)),
+        insertText(
+          lapply(line_no1:line_no2, function (line) document_position(line, -1L)),
           "# "
         )
 
-        rstudioapi::setCursorPosition(rstudioapi::document_position(line_no1, -1L))
+        setCursorPosition(document_position(line_no1, -1L))
 
         removeNotification(last_error_id)
       }
     )
+
+    observeEvent(input$exit,    { stopApp() })
 
     observeEvent(input$strict,  { strict <<- input$strict })
 
@@ -1043,12 +1047,12 @@ addin <- function () {
             func <- as.list(ff[i,])
 
             signature <- func$signature
-            range <- rstudioapi::document_range(c(func$lines[[1]][[1]], 0), c(func$lines[[1]][[2]], Inf))
+            range <- document_range(c(func$lines[[1]][[1]], 0), c(func$lines[[1]][[2]], Inf))
 
             for (old_name in names(mapping))
               signature <- gsub(old_name, mapping[old_name], signature)
 
-            rstudioapi::insertText(range, signature)
+            insertText(range, signature)
           }
         }
       }

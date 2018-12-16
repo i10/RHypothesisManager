@@ -1,9 +1,8 @@
 import(miniUI);
-import(pryr);
 import(shiny);
 import(uuid);
 import(zeallot);
 
 export(addin);
-export(loop);
+export(parse);
 export(RDataFlow);

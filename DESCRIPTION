@@ -1,14 +1,13 @@
 Package: RDataFlowPlugin
 Type: Package
 Title: Visual and Functional Aids to Support the Statistical Analysis Workflow
-Version: 0.0.2
+Version: 0.4
 Encoding: UTF-8
 LazyData: true
 Depends:
     R (>= 3.0.0)
 Imports:
     zeallot,
-    pryr,
     rstudioapi (>= 0.4),
     htmlwidgets
 RoxygenNote: 5.0.1
