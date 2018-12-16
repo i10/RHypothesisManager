@@ -215,7 +215,7 @@ find_variable <- function (name, variables, add = FALSE, force = FALSE, type_con
     # If the name can be found in the packages
     is_function_name <- !!length(packages);
 
-    if (is_function_name && do_eval) {
+    if (is_function_name && eval_) {
       # If the name can _only_ be found in the packages
       is_function_name <- !length(setdiff(grep("package:", packages), 1:length(packages)));
     }
@@ -770,13 +770,40 @@ recursion <- function (exp, variables, functions, hypotheses,
 }
 
 
+simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE) {
+  tags$label(
+    class = if (inline) "checkbox-inline" else "checkbox",
+    `for` = id,
+    tags$input(
+      id = id,
+      type = "checkbox",
+      checked = if (value) "checked" else NULL
+    ),
+    tags$span(label)
+  )
+}
+
+
 addin <- function () {
   options(stringsAsFactors = FALSE);
 
-  ui = bootstrapPage(RDataFlowOutput("graph"))
-
-  do_eval <<- FALSE;
+  eval_ <<- FALSE;
   strict <<- FALSE;
+  stop_ <<- FALSE;
+
+  ui = bootstrapPage(
+    gadgetTitleBar("",
+      left = tags$div(
+        simpleCheckbox("strict", "Treat warnings as errors", value = strict, inline = TRUE)
+      ),
+      right = tags$div(
+        simpleCheckbox("stop", "Pause the parsing", value = stop_, inline = TRUE),
+        actionButton("cancel", "Exit")
+      )
+    ),
+    RDataFlowOutput("graph")
+  )
+
   failing_context_notification_id <<- NULL
   last_error_id <<- NULL
 
@@ -792,6 +819,9 @@ addin <- function () {
     observe({
       invalidatePeriodically();
 
+      if (stop_)
+        return()
+
       tryCatch(
         expr = {
           c(id, path, textContents, selections) %<-% rstudioapi::getSourceEditorContext()[0:4];
@@ -800,11 +830,16 @@ addin <- function () {
             failing_context_notification_id <<- NULL
           }
 
+          if (!isTruthy(textContents)) {
+            stop_ <<- TRUE
+            updateCheckboxInput(getDefaultReactiveDomain(), "stop", value = stop_)
+            return()
+          }
+
           file_name <- tail(strsplit(path, "/")[[1]], n = 1);
           hash <- digest::digest(textContents, "md5");
 
           if (path != old_path || hash != old_hash) {
-
             tryCatch(
               expr = withCallingHandlers(
                 expr = {
@@ -933,12 +968,9 @@ addin <- function () {
       }
     )
 
-    observeEvent(
-      input$set_strict,
-      {
-        strict <<- input$set_strict;
-      }
-    )
+    observeEvent(input$strict,  { strict <<- input$strict })
+
+    observeEvent(input$stop,    { stop_ <<- input$stop })
 
     observeEvent(
       input$help,

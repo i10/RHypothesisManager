@@ -48,18 +48,6 @@ RDataFlow_html <- function(id, style, class, ...) {
     style = style,
     class = class,
     tag("div", list(
-      id="menu",
-      tag("label", list(
-        `for` = "toggle_strict",
-        "Stop on warnings",
-        tag("input", list(
-          id = "toggle_strict",
-          onchange = 'Shiny.setInputValue("set_strict", this.checked);',
-          type = "checkbox"
-        ))
-      ))
-    )),
-    tag("div", list(
       id="selector",
       tag("h3", list("Variables")),
       tag("ul", list())
