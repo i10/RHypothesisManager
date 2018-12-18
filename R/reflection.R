@@ -790,15 +790,15 @@ addin <- function () {
 
   eval_ <<- FALSE;
   strict <<- FALSE;
-  stop_ <<- FALSE;
+  pause <<- FALSE;
 
   ui = bootstrapPage(
     gadgetTitleBar("",
       left = tags$div(
-        simpleCheckbox("strict", "Treat warnings as errors", value = strict, inline = TRUE)
+        simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE)
       ),
       right = tags$div(
-        simpleCheckbox("stop", "Pause the parsing", value = stop_, inline = TRUE),
+        simpleCheckbox("pause", "Pause", value = pause, inline = TRUE),
         actionButton("exit", "Exit")
       )
     ),
@@ -820,7 +820,7 @@ addin <- function () {
     observe({
       invalidatePeriodically();
 
-      if (stop_)
+      if (pause)
         return()
 
       tryCatch(
@@ -833,8 +833,8 @@ addin <- function () {
           }
 
           if (!isTruthy(textContents)) {
-            stop_ <<- TRUE
-            updateCheckboxInput(getDefaultReactiveDomain(), "stop", value = stop_)
+            pause <<- TRUE
+            updateCheckboxInput(getDefaultReactiveDomain(), "stop", value = pause)
             return()
           }
 
@@ -974,7 +974,7 @@ addin <- function () {
 
     observeEvent(input$strict,  { strict <<- input$strict })
 
-    observeEvent(input$stop,    { stop_ <<- input$stop })
+    observeEvent(input$pause,   { pause <<- input$pause })
 
     observeEvent(
       input$help,

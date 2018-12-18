@@ -12,23 +12,26 @@ body {
     -webkit-flex-direction: row;
     -webkit-flex-wrap: wrap;
     /*-webkit-align-items: flex-start;*/
+
+    height: calc(100% - 45px) !important;
 }
 
 #graph > * {
     -webkit-flex-shrink: 0;
     box-sizing: border-box;
+
+    height: 100%;
 }
 
 #selector {
     width: 160px;
+    border-right: 1px solid lightgray;
 }
 
 #wrapper {
     overflow: auto;
     -webkit-flex-grow: 1;
     -webkit-flex-basis: calc(100% - 360px);
-
-    height: calc(100% - 30px);
 }
 
 #wrapper > svg {
@@ -38,7 +41,7 @@ body {
 
 #legend {
     width: 200px;
-    padding-right: 5px;
+    border-left: 1px solid lightgray;
 
     text-align: right;
 }
@@ -47,9 +50,7 @@ body {
 #legend {
     overflow-y: auto;
 
-    padding-top: 5px;
-
-    background-color: lightgray;
+    padding: 5px 0;
 }
 
 #selector h3,
@@ -77,17 +78,19 @@ body {
 #selector li:hover,
 #legend li:hover {
     cursor: pointer;
+
+    text-decoration: underline;
 }
 
-#selector h3,
-#selector li {
-    padding-left: 5px;
+#legend h3,   #legend li,
+#selector h3, #selector li {
+    padding: 0 5px;
 }
 
 #selector li.chosen {
     font-weight: bold;
 
-    background-color: darkgray;
+    background-color: lightgray;
 }
 
 /*SVG stuff*/
@@ -160,7 +163,7 @@ text {
 .legend {
     position: relative;
 
-    padding-right: calc(1em + 5px);
+    padding-right: calc(1em + 10px) !important;
 }
 
 .legend.useless {
@@ -171,7 +174,7 @@ text {
     position: absolute;
     display: block;
 
-    right: 0;
+    right: 5px;
     top: 2px;
     width: 1em;
     height: 1em;
