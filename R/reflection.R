@@ -20,6 +20,8 @@ parse <- function (text, interactive = FALSE) {
   hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
   colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
 
+  env <<- new.env()
+
   # Run loop
   line_no1 <- 1;
 
@@ -495,9 +497,12 @@ recursion <- function (exp, variables, functions, hypotheses,
       variables[var_index, ]$precursors <- list(precursor_variable_ids);
     }
 
-    # We can meaningfully assume that the variable is a dataframe if it is actually declared as one
+    # If evaluation is disabled and we can't confirm that the assigned value is a dataframe,
+    #   we can still meaningfully assume that the variable is a dataframe if it is actually declared as one
     #   or infer it from the fact it has been read from the file source.
-    if (functions[nrow(functions), ]$name %in% list("subset", "[", "data.frame", "as.data.frame", "table") ||
+    # If evaluation is enabled, the data type will be set upon the evaluation later on
+    if (!eval_ &&
+        functions[nrow(functions), ]$name %in% list("subset", "[", "data.frame", "as.data.frame", "table", "rbind", "cbind") ||
         startsWith(functions[nrow(functions), ]$name, "read")) {
       variables[var_index, ]$type <- "data";
 
@@ -536,23 +541,37 @@ recursion <- function (exp, variables, functions, hypotheses,
       }
     }
 
-    if (variables[var_index, ]$type == "constant") {
-      tryCatch(
-        expr = {
-          evaluation <- eval(exp[[3]]);
+    if (eval_) {
+      if (!is_mutation) {
+        evaluation <- eval(exp[[3]], envir = env)
 
-          if (is.vector(evaluation))
-            evaluation <- list(evaluation)
+        # Wrap the collections so that they don't cripple the main dataframe
+        if (is.vector(evaluation) || is.list(evaluation) || is.data.frame(evaluation))
+          evaluation <- list(evaluation)
 
-          else if (is.null(evaluation))
-            evaluation <- NA
+        else if (is.null(evaluation))
+          evaluation <- NA
 
-          variables[var_index, ]$value <- evaluation;
-        },
-        warning = function (...) {},
-        error = function (...) {},
-        finally = {}
-      )
+        if (is.data.frame(evaluation))
+          variables[var_index, ]$type <- "data"
+
+        variables[var_index, ]$value <- evaluation
+      }
+
+      eval(exp, envir = env)
+    }
+
+    if (variables[var_index, ]$type == "data" && !is.na(variables[var_index, ]$value) && !length(variables[var_index, ]$columns[[1]])) {
+      for (col_name in colnames(variables[var_index, ]$value[[1]])) {
+        c(col_index, variables) %<-% find_variable(col_name, variables,
+                                                   add = TRUE,
+                                                   force = TRUE,
+                                                   check_shadowing = FALSE)
+
+        variables[col_index, ]$type <- "column"
+        variables[col_index, ]$generation <- variables[var_index, ]$generation + 1
+        variables[var_index, ]$columns[[1]] <- append(variables[var_index, ]$columns[[1]], variables[col_index, ]$id)
+      }
     }
 
   # Is "[" call
@@ -652,7 +671,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 
   # Is library import call
   } else if (is.call(exp) && (identical(exp[[1]], quote(`library`)) || identical(exp[[1]], quote(`require`))) && !force_as_function) {
-    eval(exp);
+    eval(exp, envir = env);
 
   # Is library name call
   } else if (is.call(exp) && identical(exp[[1]], quote(`::`))) {
@@ -795,7 +814,8 @@ addin <- function () {
   ui = bootstrapPage(
     gadgetTitleBar("",
       left = tags$div(
-        simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE)
+        simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE),
+        simpleCheckbox("eval", "Evaluate variables", value = eval_, inline = TRUE)
       ),
       right = tags$div(
         simpleCheckbox("pause", "Pause", value = pause, inline = TRUE),
@@ -975,6 +995,14 @@ addin <- function () {
     observeEvent(input$strict,  { strict <<- input$strict })
 
     observeEvent(input$pause,   { pause <<- input$pause })
+
+    observeEvent(input$eval, {
+      if (input$eval != eval_) {
+        eval_ <<- input$eval
+
+        old_hash <<- ""
+      }
+    })
 
     observeEvent(
       input$help,
