@@ -309,7 +309,7 @@ HTMLWidgets.widget({
 
                             tooltip_content.selectAll("*").remove();
 
-                            const comment_re = /# *(.+)$/ig;
+                            const comment_re = /#+ *(.+)$/ig;
 
                             const comment_start = func.signature.search(comment_re);
 
