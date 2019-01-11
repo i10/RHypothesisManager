@@ -104,18 +104,18 @@ body {
     cursor: pointer;
 }
 
-.node circle {
+.node .circle path.slice {
     stroke: #444444;
     fill: #ffffff;
     stroke-width: 1px;
 }
 
-.node.breakpoint circle {
+.node.breakpoint .circle path.slice {
     stroke: #aa0022;
     stroke-width: 2px;
 }
 
-.node.marker circle {
+.node.marker .circle path.slice {
     stroke: #999999;
 }
 

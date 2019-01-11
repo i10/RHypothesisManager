@@ -276,20 +276,25 @@ HTMLWidgets.widget({
                         });
 
                     // adds the circle to the node
-                    node.append("circle")
-                        .attr("r", 5)
-                        .style("fill", function (d) {
-                            const func = d.data.data;
+                    node.append("g")
+                        .attr("class", "circle")
+                        .selectAll("path.slice")
+                        .data(function (d) {
+                            var category_data = [null];
 
-                            if (func.categories.length)
-                                return color(func.categories[0].id);
+                            if (d.data.data.categories.length)
+                                category_data = d.data.data.categories.map(function (cat, i, arr) { return cat.id; })
+
+                            return d3.pie().value(function (d) { return 1; })(category_data);
                         })
-                        .style("stroke", function (d) {
-                            const func = d.data.data;
-
-                            if (!func.breakpoint /*&& !func.marker*/ && func.categories.length)
-                                return color(func.categories[0].id);
-                        });
+                        .enter()
+                        .append("path")
+                        .attrs({
+                            d: d3.arc().innerRadius(0).outerRadius(5),
+                            class: "slice"
+                        })
+                        .style("fill",   function (d) { return d.data ? color(d.data) : null; })
+                        .style("stroke", function (d) { return d.data ? color(d.data) : null; });
 
                     node.append("text")
                         .attrs({
