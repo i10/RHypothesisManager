@@ -98,7 +98,7 @@ HTMLWidgets.widget({
                                 if (arg.precursors.length) {
                                     const precursors = variables.filter(function (v) { return arg.precursors.indexOf(v.id) !== -1; });
 
-                                    const data_precursors = precursors.filter(function (v) { return v.type === "data"; });
+                                    const data_precursors = precursors.filter(function (v) { return v.type === "data" || v.type === "model"; });
 
                                     if (arg.type === "data" && data_precursors.length === 0) {
                                         // Assume that the data variable was constructed from the constants
@@ -143,12 +143,13 @@ HTMLWidgets.widget({
 
                     func.breakpoint = vars.reduce(function (acc, arg) { return acc || func.breakpoint === arg.id }, false);
 
-                    const there_are_models = args.reduce(function(acc, arg, i, arr) { return acc || arg.type === "model"; }, false);
+                    func.markers = args.filter(function(arg, i, arr) { return arg.type === "model"; });
 
-                    func.marker = args
-                        .filter(function (arg, i, arr) { return arg.type === "model" || (!there_are_models && arg.type === "data" && arg.generation > 1); })
-                        .map(function (arg, i, arr) { return arg.name })
-                        .reduce(function (acc, arg, i, arr) { return acc && acc !== arg ? "…" : arg; }, null);
+                    // Iff there are models among the function products -- replace the markers with only those
+                    const model_products = products.filter(function(arg, i, arr) { return arg.type === "model"; });
+
+                    if (model_products.length)
+                        func.markers = model_products;
 
                     // Stream-work
                     vars.filter(function (arg, i, arr) { return arg.generation === 0; })
@@ -380,7 +381,7 @@ HTMLWidgets.widget({
                         .style("text-anchor", "end")
                         .text(function (d) {
                             const func = d.data.data;
-                            return func.marker;
+                            return func.markers.reduce(function (acc, arg, i, arr) { return acc && acc !== arg.name ? "…" : arg.name; }, null);
                         });
 
                     const bbox = g.node().getBoundingClientRect();

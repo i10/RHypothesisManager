@@ -506,6 +506,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         startsWith(functions[nrow(functions), ]$name, "read")) {
       variables[var_index, ]$type <- "data";
 
+    # Explicit formula variable declarations
     } else if (before_funcs - nrow(functions) == 1 &&
                functions[nrow(functions), ]$name == "~") {
       selector <- apply(hypotheses, 1, function (hyp) functions[nrow(functions)]$id %in% hyp$functions);
@@ -541,19 +542,41 @@ recursion <- function (exp, variables, functions, hypotheses,
       }
     }
 
+    # 2nd (and further) gen models
+    model_precursor_selector <- apply(variables, 1, function (v) v$id %in% precursor_variable_ids) & variables$type == "model"
+
+    if (any(model_precursor_selector)) {
+      parent_model_ids <- variables[model_precursor_selector, ]$id
+
+      for (m_id in parent_model_ids) {
+        hypothesis_selector <- apply(hypotheses, 1, function (h) m_id %in% h$models)
+        hypotheses[hypothesis_selector, ]$models[[1]] <- append(hypotheses[hypothesis_selector, ]$models[[1]], variables[var_index, ]$id)
+      }
+
+      variables[var_index, ]$type <- "model"
+    }
+
     if (eval_) {
       if (!is_mutation) {
         evaluation <- eval(exp[[3]], envir = env)
 
+        if (is.data.frame(evaluation))
+          variables[var_index, ]$type <- "data"
+
+        # S4 objects cause errors when being asigned to the cell of the dataframe
+        if (isS4(evaluation))
+          evaluation <- NA
+
+        else if (is.ggplot(evaluation)) {
+          variables[var_index, ]$type <- "model"  # TODO: replace with an exclusive data type
+          evaluation <- NA
+
         # Wrap the collections so that they don't cripple the main dataframe
-        if (is.vector(evaluation) || is.list(evaluation) || is.data.frame(evaluation))
+        } else if (is.vector(evaluation) || is.list(evaluation) || is.data.frame(evaluation))
           evaluation <- list(evaluation)
 
         else if (is.null(evaluation))
           evaluation <- NA
-
-        if (is.data.frame(evaluation))
-          variables[var_index, ]$type <- "data"
 
         variables[var_index, ]$value <- evaluation
       }
@@ -878,9 +901,8 @@ addin <- function () {
                   functions <<- ff
                   hypotheses <<- hh
 
-                  # Clear the undumpable constant values from the variables list
-                  # TODO: find a way to sneak the `jsonlite.toJSON(..., force = TRUE)` into the shiny calls
-                  dumpability_selector = apply(vv, 1, function (v) v$type != "constant" || is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
+                  # Clear the undumpable values from the variables list
+                  dumpability_selector = apply(vv, 1, function (v) is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
 
                   if (!all(dumpability_selector))
                     vv[!dumpability_selector, ]$value <- NA
