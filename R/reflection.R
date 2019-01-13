@@ -372,8 +372,8 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 
   for (func_args in f[(before_funcs + 1):nrow(f), ]$arguments) {
     for (arg in func_args) {
-      for (var_index in 1:nrow(variables)) {
-        var <- as.list(variables[var_index, ]);
+      for (var_index_ in 1:nrow(variables)) {
+        var <- as.list(variables[var_index_, ]);
 
         if (var$id == arg && var$type == "column") {
           columns[[length(columns) + 1]] <- var;
