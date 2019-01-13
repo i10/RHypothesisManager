@@ -786,7 +786,7 @@ recursion <- function (exp, variables, functions, hypotheses,
 }
 
 
-simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE) {
+simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE, ...) {
   tags$label(
     class = if (inline) "checkbox-inline" else "checkbox",
     `for` = id,
@@ -795,7 +795,8 @@ simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE) {
       type = "checkbox",
       checked = if (value) "checked" else NULL
     ),
-    tags$span(label)
+    tags$span(label),
+    ...
   )
 }
 
@@ -815,7 +816,8 @@ addin <- function () {
     gadgetTitleBar("",
       left = tags$div(
         simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE),
-        simpleCheckbox("eval", "Evaluate variables", value = eval_, inline = TRUE)
+        simpleCheckbox("eval", "Shallow evaluation", value = !eval_, inline = TRUE,
+                       title = "Only analyze textual content of the script. Uncheck to evaluate the variable values")
       ),
       right = tags$div(
         simpleCheckbox("pause", "Pause", value = pause, inline = TRUE),
@@ -997,8 +999,8 @@ addin <- function () {
     observeEvent(input$pause,   { pause <<- input$pause })
 
     observeEvent(input$eval, {
-      if (input$eval != eval_) {
-        eval_ <<- input$eval
+      if (input$eval == eval_) {
+        eval_ <<- !input$eval
 
         old_hash <<- ""
       }
