@@ -9,5 +9,7 @@ Depends:
 Imports:
     zeallot,
     rstudioapi (>= 0.4),
+    miniUI,
+    uuid,
     htmlwidgets
 RoxygenNote: 5.0.1
