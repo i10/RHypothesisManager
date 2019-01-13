@@ -172,11 +172,27 @@ HTMLWidgets.widget({
                             } else {
                                 notch.parent = stream.functions
                                     .filter(function(old_notch, i, arr) {
-                                        return (i === 0) ||
-                                            old_notch.breakpoint ||
-                                            (!old_notch.categories.length && !notch.categories.length) ||
-                                            (old_notch.categories.length && notch.categories.length &&
-                                             old_notch.categories[0].id === notch.categories[0].id);
+                                        if (i === 0)
+                                            return true;
+
+                                        if (old_notch.breakpoint)
+                                            return true;
+
+                                        const categories_ids =      notch.categories.map(function (arg) { return arg.id; }),
+                                              old_categories_ids =  old_notch.categories.map(function (arg) { return arg.id; }),
+                                              marker_ids =          notch.markers.map(function (arg) { return arg.id; }),
+                                              old_marker_ids =      old_notch.markers.map(function (arg) { return arg.id; });
+
+                                        if (!categories_ids.length && !old_categories_ids.length && !marker_ids.length && !old_marker_ids.length)
+                                            return true;
+
+                                        else if (marker_ids.reduce(function (acc, arg, i, arr) { return acc || (old_marker_ids.indexOf(arg) !== -1) }, false))
+                                            return true;
+
+                                        else if (categories_ids.reduce(function (acc, arg, i, arr) { return acc || (old_categories_ids.indexOf(arg) !== -1) }, false))
+                                            return true;
+
+                                        return false;
                                     })
                                     .reverse()
                                     [0].id;
