@@ -883,7 +883,8 @@ addin <- function () {
             return()
           }
 
-          file_name <- tail(strsplit(path, "/")[[1]], n = 1);
+          setwd(dirname(path))
+          file_name <- basename(path)
           hash <- digest::digest(textContents, "md5");
 
           if (path != old_path || hash != old_hash) {
