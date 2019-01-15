@@ -567,7 +567,7 @@ recursion <- function (exp, variables, functions, hypotheses,
         if (isS4(evaluation))
           evaluation <- NA
 
-        else if (is.ggplot(evaluation)) {
+        else if ('package:ggplot2' %in% search() && is.ggplot(evaluation)) {
           variables[var_index, ]$type <- "model"  # TODO: replace with an exclusive data type
           evaluation <- NA
 
@@ -838,6 +838,7 @@ addin <- function () {
   ui = bootstrapPage(
     gadgetTitleBar("",
       left = tags$div(
+        actionButton("execute", "Execute selection", icon = icon("play")),
         simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE),
         simpleCheckbox("eval", "Shallow evaluation", value = !eval_, inline = TRUE,
                        title = "Only analyze textual content of the script. Uncheck to evaluate the variable values")
@@ -1016,6 +1017,24 @@ addin <- function () {
     )
 
     observeEvent(input$exit,    { stopApp() })
+
+    observeEvent(input$execute, {
+      c(id, path, textContents, selections) %<-% getSourceEditorContext()[0:4]
+
+      for (selection in selections) {
+        print(
+          tryCatch(
+            expr = {
+              exp <- base::parse(text = selection$text)
+
+              eval(exp, envir = env)
+            },
+            error = function (e) e,
+            warning = function (w) w
+          )
+        )
+      }
+    })
 
     observeEvent(input$strict,  { strict <<- input$strict })
 
