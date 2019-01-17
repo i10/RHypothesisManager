@@ -287,46 +287,16 @@ HTMLWidgets.widget({
                         .attr("transform", function (d) {
                             return "translate(" + d.x + "," + d.y + ")";
                         })
-                        .on("click", function(d) {
+                        .on("mouseover", function (d) {
                             const func = d.data.data;
-                            Shiny.setInputValue("goto", func.lines);
-                        });
 
-                    // adds the circle to the node
-                    node.append("g")
-                        .attr("class", "circle")
-                        .selectAll("path.slice")
-                        .data(function (d) {
-                            var category_data = [null];
-
-                            if (d.data.data.categories.length)
-                                category_data = d.data.data.categories.map(function (cat, i, arr) { return cat.id; })
-
-                            return d3.pie().value(function (d) { return 1; })(category_data);
-                        })
-                        .enter()
-                        .append("path")
-                        .attrs({
-                            d: d3.arc().innerRadius(0).outerRadius(5),
-                            class: "slice"
-                        })
-                        .style("fill",   function (d) { return d.data ? color(d.data) : null; })
-                        .style("stroke", function (d) { return d.data ? color(d.data) : null; });
-
-                    node.append("text")
-                        .attrs({
-                            dy: ".35em",
-                            x: 10
-                        })
-                        .style("text-anchor", "start")
-                        .on("mouseover", function(d) {
-                            const func = d.data.data;
+                            const bbox = this.getBoundingClientRect();
 
                             tooltip
                                 .styles({
                                     "display": "block",
-                                    "left": (d3.event.pageX) + "px",
-                                    "top": (d3.event.pageY - 20) + "px"
+                                    "left": (bbox.right - 4) + "px",
+                                    "top": (bbox.top - 9) + "px"
                                 });
 
                             tooltip_content.selectAll("*").remove();
@@ -384,6 +354,38 @@ HTMLWidgets.widget({
                                 tooltip.style("display", "none");
                             }
                         })
+                        .on("click", function(d) {
+                            const func = d.data.data;
+                            Shiny.setInputValue("goto", func.lines);
+                        });
+
+                    // adds the circle to the node
+                    node.append("g")
+                        .attr("class", "circle")
+                        .selectAll("path.slice")
+                        .data(function (d) {
+                            var category_data = [null];
+
+                            if (d.data.data.categories.length)
+                                category_data = d.data.data.categories.map(function (cat, i, arr) { return cat.id; })
+
+                            return d3.pie().value(function (d) { return 1; })(category_data);
+                        })
+                        .enter()
+                        .append("path")
+                        .attrs({
+                            d: d3.arc().innerRadius(0).outerRadius(5),
+                            class: "slice"
+                        })
+                        .style("fill",   function (d) { return d.data ? color(d.data) : null; })
+                        .style("stroke", function (d) { return d.data ? color(d.data) : null; });
+
+                    node.append("text")
+                        .attrs({
+                            dy: ".35em",
+                            x: 10
+                        })
+                        .style("text-anchor", "start")
                         .text(function (d) {
                             const func = d.data.data;
                             return func.name;
@@ -399,6 +401,20 @@ HTMLWidgets.widget({
                             const func = d.data.data;
                             return func.markers.reduce(function (acc, arg, i, arr) { return acc && acc !== arg.name ? "…" : arg.name; }, null);
                         });
+
+                    node.each(function (d, i, arr) {
+                        const bbox = this.getBBox();
+
+                        d3.select(this).insert("rect", ".circle")
+                            .attrs({
+                                x: bbox.x - 5,
+                                y: bbox.y - 2,
+                                width: bbox.width + 10,
+                                height: bbox.height + 4,
+                                rx: 5,
+                                ry: 5
+                            })
+                    });
 
                     const bbox = g.node().getBoundingClientRect();
 

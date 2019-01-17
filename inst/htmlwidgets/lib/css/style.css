@@ -123,6 +123,11 @@ body {
     stroke: black;
 }
 
+.node rect {
+    fill: transparent;
+    stroke: transparent;
+}
+
 text {
     font: 12px sans-serif;
     stroke: #444444;
@@ -132,12 +137,14 @@ text {
 #tooltip {
     display: none;
 
+    height: initial;
+
     opacity: 0.9;
 }
 
 #tooltip > div {
     padding: 5px;
-    margin: 10px;
+    margin: 5px;
     border-radius: 5px;
     border: 1px solid dimgray;
 
