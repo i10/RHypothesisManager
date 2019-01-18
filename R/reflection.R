@@ -63,7 +63,8 @@ parse <- function (text, interactive = FALSE) {
           }
         },
         error = function (e) {
-          if (grepl("unexpected end of input", e$message)) {
+          if (grepl("unexpected end of input", e$message) ||
+              grepl("INCOMPLETE_STRING", e$message)) {
             line_no2 <<- line_no2 + 1;
 
           } else {
@@ -572,7 +573,7 @@ recursion <- function (exp, variables, functions, hypotheses,
           evaluation <- NA
 
         # Wrap the collections so that they don't cripple the main dataframe
-        } else if (is.vector(evaluation) || is.list(evaluation) || is.data.frame(evaluation))
+        } else if (is.vector(evaluation) || is.matrix(evaluation) || is.list(evaluation) || is.data.frame(evaluation))
           evaluation <- list(evaluation)
 
         else if (is.null(evaluation))
