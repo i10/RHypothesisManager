@@ -1063,18 +1063,26 @@ addin <- function () {
       {
         hyp <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
 
+        columns <- list("New column" = "")
+
+        for (id in variables[variables$type == "column", ]$id) {
+          columns[[variables[variables$id == id, ]$name]] <- id
+        }
+
         showModal(modalDialog(
           title = paste0(c("Edit hypothesis", hyp$name), collapse = " "),
           if (!is.null(hyp$columns[[1]]$dependant)) {
             var <- as.list(variables[variables$id == hyp$columns[[1]]$dependant, ])
             tagList(
-              textInput(var$id, var$name, value = var$name),
+              selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                             options = list("create" = TRUE)),
               tags$hr()
             )
           },
           tagList(list = lapply(hyp$columns[[1]]$control, function (col_id) {
             var <- as.list(variables[variables$id == col_id, ])
-            textInput(var$id, var$name, value = var$name)
+            selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                           options = list("create" = TRUE))
           })),
           footer = tagList(
             tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
@@ -1096,7 +1104,12 @@ addin <- function () {
           if (startsWith(name, "v-")) {
             var <- as.list(variables[variables$id == name, ])
 
-            mapping[var$name] <- input[[name]]
+            if (startsWith(input[[name]], "v-")) {
+              mapping[var$name] <- variables[variables$id == input[[name]], ]$name
+
+            } else {
+              mapping[var$name] <- input[[name]]
+            }
           }
 
         function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]])
