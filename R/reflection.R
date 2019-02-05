@@ -845,6 +845,42 @@ simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE, ...) {
 }
 
 
+hypothesisEditor <- function (hypothesis, title, action_id, variables) {
+  columns <- list("New column" = "")
+
+  for (id in variables[variables$type == "column", ]$id) {
+    col_name <- variables[variables$id == id, ]$name
+    dataset_name <- variables[apply(variables, 1, function (v) id %in% v$columns ), ]$name
+
+    name <- paste(c(col_name, "|", dataset_name), collapse = " ")
+
+    columns[[name]] <- id
+  }
+
+  modalDialog(
+    title = title,
+    if (!is.null(hypothesis$columns[[1]]$dependant)) {
+      var <- as.list(variables[variables$id == hypothesis$columns[[1]]$dependant, ])
+        tagList(
+        selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                       options = list("create" = TRUE)),
+        tags$hr()
+      )
+    },
+    tagList(list = lapply(hypothesis$columns[[1]]$control, function (col_id) {
+      var <- as.list(variables[variables$id == col_id, ])
+      selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                     options = list("create" = TRUE))
+    })),
+    footer = tagList(
+      tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
+      modalButton("Cancel"),
+      actionButton(action_id, "OK")
+    )
+  )
+}
+
+
 addin <- function () {
   library(miniUI);
   library(rstudioapi);
@@ -1085,34 +1121,13 @@ addin <- function () {
     observeEvent(
       input$edit_hypothesis,
       {
-        hyp <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
+        hypothesis <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
 
-        columns <- list("New column" = "")
-
-        for (id in variables[variables$type == "column", ]$id) {
-          columns[[variables[variables$id == id, ]$name]] <- id
-        }
-
-        showModal(modalDialog(
-          title = paste0(c("Edit hypothesis", hyp$name), collapse = " "),
-          if (!is.null(hyp$columns[[1]]$dependant)) {
-            var <- as.list(variables[variables$id == hyp$columns[[1]]$dependant, ])
-            tagList(
-              selectizeInput(var$id, var$name, choices = columns, selected = var$id,
-                             options = list("create" = TRUE)),
-              tags$hr()
-            )
-          },
-          tagList(list = lapply(hyp$columns[[1]]$control, function (col_id) {
-            var <- as.list(variables[variables$id == col_id, ])
-            selectizeInput(var$id, var$name, choices = columns, selected = var$id,
-                           options = list("create" = TRUE))
-          })),
-          footer = tagList(
-            tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
-            modalButton("Cancel"),
-            actionButton("replace_hypothesis", "OK")
-          )
+        showModal(hypothesisEditor(
+          hypothesis = hypothesis,
+          title = paste0(c("Edit hypothesis", hypothesis$name), collapse = " "),
+          action_id = "replace_hypothesis",
+          variables = variables
         ))
       }
     )
