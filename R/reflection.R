@@ -881,11 +881,13 @@ addin <- function () {
 
           if (!isTruthy(textContents)) {
             pause <<- TRUE
-            updateCheckboxInput(getDefaultReactiveDomain(), "stop", value = pause)
+            updateCheckboxInput(getDefaultReactiveDomain(), "pause", value = pause)
             return()
           }
 
-          setwd(dirname(path))
+          if (isTruthy(dirname(path)))
+            setwd(dirname(path))
+
           file_name <- basename(path)
           hash <- digest::digest(textContents, "md5");
 
@@ -994,6 +996,8 @@ addin <- function () {
       input$goto,
       {
         c(line_no1, line_no2) %<-% lapply(input$goto, as.integer);
+
+        setCursorPosition(document_position(line_no1, 0))
 
         setSelectionRanges(
           list(document_range(c(line_no1, 0), c(line_no2, Inf)))
