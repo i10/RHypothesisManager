@@ -39,6 +39,11 @@ body {
     margin: 0 auto;
 }
 
+svg > #canvas {
+    fill: transparent;
+    stroke: transparent;
+}
+
 #legend {
     width: 200px;
     border-left: 1px solid lightgray;

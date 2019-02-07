@@ -23,8 +23,6 @@ HTMLWidgets.widget({
                 selector.selectAll("*").remove();
                 legend.selectAll("*").remove();
 
-                const defs = svg.append("defs");
-
                 tooltip.attr("style", null);
                 tooltip_content.selectAll("*").remove();
 
@@ -426,6 +424,15 @@ HTMLWidgets.widget({
                         width: bbox.width + 50,
                         height: bbox.height + 50
                     });
+
+                    svg.insert("rect", "g")
+                        .attrs({
+                            id: "canvas",
+                            x: 0,
+                            y: 0,
+                            width: "100%",
+                            height: "100%"
+                        });
 
                     const stream_categories = stream_.functions
                         .reduce(function (acc, func, i, arr) {
