@@ -1,5 +1,5 @@
 HTMLWidgets.widget({
-    name: 'RDataFlow',
+    name: 'HypothesisManager',
     type: 'output',
 
     factory: function (el, width, height) {

@@ -1,8 +1,7 @@
-import(miniUI);
-import(shiny);
-import(uuid);
-import(zeallot);
+import(miniUI)
+import(shiny)
+import(uuid)
+import(zeallot)
 
-export(addin);
-export(parse);
-export(RDataFlow);
+export(addin)
+export(HypothesisManager)

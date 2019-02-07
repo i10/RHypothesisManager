@@ -849,7 +849,7 @@ addin <- function () {
         actionButton("exit", "Exit")
       )
     ),
-    RDataFlowOutput("graph")
+    HypothesisManagerOutput("graph")
   )
 
   failing_context_notification_id <<- NULL
@@ -912,8 +912,8 @@ addin <- function () {
                   if (!all(dumpability_selector))
                     vv[!dumpability_selector, ]$value <- NA
 
-                  output$graph <- renderRDataFlow({
-                    RDataFlow(list(
+                  output$graph <- renderHypothesisManager({
+                    HypothesisManager(list(
                       variables = unname(apply(vv, 1, as.list)),
                       functions = unname(apply(ff, 1, as.list)),
                       hypotheses = unname(apply(hh, 1, as.list))

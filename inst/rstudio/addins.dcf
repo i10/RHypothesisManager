@@ -1,4 +1,4 @@
-Name: RDataFlow
-Description: Visual and Functional Aids to Support the Statistical Analysis Workflow
+Name: Hypothesis Manager
+Description: Open an interactive graph to inspect the workflow of the current file
 Binding: addin
 Interactive: false
