@@ -351,10 +351,6 @@ HTMLWidgets.widget({
                             if (!(x >= bbox.left && x <= bbox.right && y >= bbox.top && y <= bbox.bottom)) {
                                 tooltip.style("display", "none");
                             }
-                        })
-                        .on("click", function(d) {
-                            const func = d.data.data;
-                            Shiny.setInputValue("goto", func.lines);
                         });
 
                     // adds the circle to the node
@@ -495,20 +491,20 @@ HTMLWidgets.widget({
                                 bottom = Math.max(selection_rectangle.anchor.y, event.offsetY),
                                 right = Math.max(selection_rectangle.anchor.x, event.offsetX);
 
-                            rect.attrs({
-                                x: left,
-                                y: top,
-                                width: right - left,
-                                height: bottom - top
-                            })
+                            if (event.target.parentNode === svg.node() || event.target === svg.node())
+                                rect.attrs({
+                                    x: left,
+                                    y: top,
+                                    width: right - left,
+                                    height: bottom - top
+                                })
                         })
                         .on("end", function () {
-                            const event = d3.event.sourceEvent;
+                            const top = Number(rect.attr("y")),
+                                left = Number(rect.attr("x"));
 
-                            const top = Math.min(selection_rectangle.anchor.y, event.offsetY),
-                                left = Math.min(selection_rectangle.anchor.x, event.offsetX),
-                                bottom = Math.max(selection_rectangle.anchor.y, event.offsetY),
-                                right = Math.max(selection_rectangle.anchor.x, event.offsetX);
+                            const bottom = top + Number(rect.attr("height")),
+                                right = left + Number(rect.attr("width"));
 
                             rect.remove();
                             g.style("pointer-events", null);
@@ -524,9 +520,7 @@ HTMLWidgets.widget({
                                     node_bottom = client_rect.bottom - viewport_client_rect.top,
                                     node_right = client_rect.right - viewport_client_rect.left;
 
-                                const is_selected =
-                                    ((node_top >= top && node_top <= bottom) || (node_bottom >= top && node_bottom <= bottom)) &&
-                                    ((node_left >= left && node_left <= right) || (node_right >= left && node_right <= right));
+                                const is_selected = node_left < right && node_right > left && node_top < bottom && node_bottom > top;
                                 const was_selected = classes.indexOf("selected") !== -1;
 
                                 if (is_selected && !was_selected) {
@@ -537,7 +531,14 @@ HTMLWidgets.widget({
                                 }
 
                                 return classes.join(" ")
-                            })
+                            });
+
+                            const selected_functions = [];
+
+                            node.filter(".selected").each(function (d) { selected_functions.push(d.data.id); });
+
+                            if (selected_functions.length)
+                                Shiny.setInputValue("select", selected_functions)
                         });
 
                     svg.call(drag);

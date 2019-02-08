@@ -1062,6 +1062,20 @@ addin <- function () {
     )
 
     observeEvent(
+      input$select,
+      {
+        selector <- apply(functions, 1, function (f) f$id %in% input$select)
+
+        selection_ranges <- lapply(
+          functions[selector, ]$lines,
+          function (lines) document_range(c(lines[[1]], 0), c(lines[[2]], Inf))
+        )
+
+        setSelectionRanges(selection_ranges)
+      }
+    )
+
+    observeEvent(
       input$comment,
       {
         c(line_no1, line_no2) %<-% lapply(input$comment, as.integer);
