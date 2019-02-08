@@ -8,6 +8,7 @@ HTMLWidgets.widget({
 
         const menu = container.select("#menu");
         const svg = container.select("svg");
+        const copy = container.select("#copy");
         const selector = container.select("#selector > ul");
         const legend = container.select("#legend > ul");
         const tooltip = container.select("#tooltip")
@@ -23,6 +24,7 @@ HTMLWidgets.widget({
                 selector.selectAll("*").remove();
                 legend.selectAll("*").remove();
 
+                copy.property("disabled", true);
                 tooltip.attr("style", null);
                 tooltip_content.selectAll("*").remove();
 
@@ -534,11 +536,29 @@ HTMLWidgets.widget({
                             });
 
                             const selected_functions = [];
+                            var selected_hypotheses = [];
 
-                            node.filter(".selected").each(function (d) { selected_functions.push(d.data.id); });
+                            node.filter(".selected").each(function (d) {
+                                selected_functions.push(d.data.id);
+                                selected_hypotheses = selected_hypotheses.concat(d.data.data.categories);
+                            });
 
-                            if (selected_functions.length)
+                            if (selected_functions.length) {
                                 Shiny.setInputValue("select", selected_functions)
+                            }
+
+                            const selected_hypotheses_ids = selected_hypotheses
+                                .map(function (h) { return h.id; })
+                                .filter(function (h, i, arr) { return arr.indexOf(h) === i; });
+
+                            if (selected_hypotheses_ids.length === 1) {
+                                copy.property("disabled", false);
+                                Shiny.setInputValue("copy_hypothesis", selected_hypotheses_ids[0]);
+
+                            } else {
+                                copy.property("disabled", true);
+                                Shiny.setInputValue("copy_hypothesis", null);
+                            }
                         });
 
                     svg.call(drag);

@@ -39,6 +39,13 @@ body {
     margin: 0 auto;
 }
 
+#wrapper > button#copy {
+    position: absolute;
+
+    bottom: 10px;
+    right: 10px;
+}
+
 svg > #canvas {
     fill: transparent;
     stroke: transparent;
