@@ -1198,6 +1198,74 @@ addin <- function () {
     )
 
     observeEvent(
+      input$copy,
+      {
+        showModal(hypothesisEditor(
+          hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
+          title = "Copy",
+          action_id = "paste",
+          variables = variables
+        ))
+      }
+    )
+
+    observeEvent(
+      input$paste,
+      {
+        removeModal()
+
+        mapping <- list()
+
+        for (name in names(input))
+          if (startsWith(name, "v-")) {
+            var <- as.list(variables[variables$id == name, ])
+
+            if (startsWith(input[[name]], "v-")) {
+              mapping[var$name] <- variables[variables$id == input[[name]], ]$name
+
+            } else {
+              mapping[var$name] <- input[[name]]
+            }
+          }
+
+        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$copy_hypothesis, ]$functions[[1]])
+
+        t <- FALSE
+        for (i in 1:nrow(functions)) {
+          if (function_selector[i] && functions[i, ]$depth > 1) {
+            t <- TRUE
+            function_selector[i] <- FALSE
+
+          } else if (t && functions[i, ]$depth == 1) {
+            function_selector[i] <- TRUE;
+            t <- FALSE
+          }
+        }
+
+        function_selector <- function_selector | apply(functions, 1, function (f) f$id %in% input$select)
+
+        # TODO: find or get the breakpoint
+        position <- document_position(Inf, 0)
+
+        if (any(function_selector)) {
+          insertText(position, "\n")
+
+          ff = functions[function_selector, ]
+
+          for (signature in ff$signature) {
+            for (old_name in names(mapping))
+              signature <- gsub(old_name, mapping[old_name], signature)
+
+            insertText(position, paste0(c(signature, "\n"), collapse = ""))
+          }
+        }
+
+        # TODO: select the newly pasted functions
+        setCursorPosition(position)
+      }
+    )
+
+    observeEvent(
       input$install,
       {
         tryCatch(expr = {
