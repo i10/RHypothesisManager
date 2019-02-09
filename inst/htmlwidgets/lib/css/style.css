@@ -149,6 +149,10 @@ svg > #canvas {
     fill: dodgerblue;
 }
 
+.node.unreachable {
+    opacity: 0.5;
+}
+
 text {
     font: 12px sans-serif;
     stroke: #444444;

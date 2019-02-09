@@ -446,11 +446,8 @@ HTMLWidgets.widget({
                     const categories = legend.selectAll("li")
                         .data(hypotheses)
                         .enter().append("li")
-                        .attr("class", function (d) {
-                            return ["legend",
-                                stream_categories.indexOf(d.id) === -1 ? "useless" : ""
-                            ].join(" ").trim();
-                        })
+                        .classed("legend", true)
+                        .classed("useless", function (d) { return stream_categories.indexOf(d.id) === -1 })
                         .attr("title", function (d) { return d.name; })
                         .on("click", function (d) {
                             Shiny.setInputValue("edit_hypothesis", d.id);
@@ -466,7 +463,6 @@ HTMLWidgets.widget({
                         .attr("class", "chosen");
 
                     const selection_rectangle = {};
-                    var rect;
 
                     const drag = d3.drag()
                         .on("start", function () {
@@ -475,8 +471,7 @@ HTMLWidgets.widget({
                             event.preventDefault();
 
                             selection_rectangle.anchor = {x: event.offsetX, y: event.offsetY};
-
-                            rect = svg.append("rect")
+                            selection_rectangle.node = svg.append("rect")
                                 .attrs({
                                     id: "select",
                                     x: event.offsetX,
@@ -493,50 +488,116 @@ HTMLWidgets.widget({
                                 bottom = Math.max(selection_rectangle.anchor.y, event.offsetY),
                                 right = Math.max(selection_rectangle.anchor.x, event.offsetX);
 
-                            if (event.target.parentNode === svg.node() || event.target === svg.node())
-                                rect.attrs({
-                                    x: left,
-                                    y: top,
-                                    width: right - left,
-                                    height: bottom - top
-                                })
-                        })
-                        .on("end", function () {
-                            const top = Number(rect.attr("y")),
-                                left = Number(rect.attr("x"));
+                            if (event.target.parentNode !== svg.node() && event.target !== svg.node())
+                                return;
 
-                            const bottom = top + Number(rect.attr("height")),
-                                right = left + Number(rect.attr("width"));
+                            selection_rectangle.node.attrs({
+                                x: left,
+                                y: top,
+                                width: right - left,
+                                height: bottom - top
+                            });
 
-                            rect.remove();
-                            g.style("pointer-events", null);
+                            const direction = {
+                                x: event.offsetX - selection_rectangle.anchor.x,
+                                y: event.offsetY - selection_rectangle.anchor.y
+                            };
+                            direction.distance = Math.sqrt(Math.pow(direction.x, 2) + Math.pow(direction.y, 2));
+                            direction.axis = Math.abs(direction.x) >= Math.abs(direction.y) ? "x" : "y";
+                            direction.x /= Math.abs(direction.x);
+                            direction.y /= Math.abs(direction.y);
 
-                            node.attr("class", function () {
-                                const classes = this.getAttribute("class").split(" ");
+                            var closest_node_distance = Infinity;
+                            var closest_node;
 
-                                const client_rect = this.getBoundingClientRect(),
+                            node.each(function (d) {
+                                const $this = d3.select(this);
+
+                                const client_rect = $this.select(".circle").node().getBoundingClientRect(),
                                     viewport_client_rect = this.viewportElement.getBoundingClientRect();
 
-                                const node_top = client_rect.top - viewport_client_rect.top,
-                                    node_left = client_rect.left - viewport_client_rect.left,
-                                    node_bottom = client_rect.bottom - viewport_client_rect.top,
-                                    node_right = client_rect.right - viewport_client_rect.left;
+                                const node_direction = {
+                                    x: client_rect.left - viewport_client_rect.left + client_rect.width / 2 - selection_rectangle.anchor.x,
+                                    y: client_rect.top - viewport_client_rect.top + client_rect.height / 2 - selection_rectangle.anchor.y
+                                };
 
-                                const is_selected = node_left < right && node_right > left && node_top < bottom && node_bottom > top;
-                                const was_selected = classes.indexOf("selected") !== -1;
+                                node_direction.axis = Math.abs(node_direction.x) > Math.abs(node_direction.y) ? "x" : "y";
+                                node_direction.distance = Math.sqrt(Math.pow(node_direction.x, 2) + Math.pow(node_direction.y, 2));
+                                node_direction.x /= Math.abs(node_direction.x);
+                                node_direction.y /= Math.abs(node_direction.y);
 
-                                if (is_selected && !was_selected) {
-                                    classes.push("selected");
+                                if ((direction.axis === node_direction.axis) &&
+                                    (direction[direction.axis] === node_direction[node_direction.axis]) &&
+                                    node_direction.distance < closest_node_distance) {
+                                    closest_node_distance = node_direction.distance;
+                                    closest_node = d;
+                                }
+                            });
 
-                                } else if (!is_selected && was_selected) {
-                                    classes.splice(classes.indexOf("selected"), 1);
+                            if (!closest_node)
+                                return;
+
+                            const available_nodes = [closest_node];
+                            var parent = closest_node;
+
+                            var restricted_categories = closest_node.data.data.categories.map(function (cat) { return cat.id; });
+
+                            if (!restricted_categories.length && node.filter(".selected").size()) {
+                                node.filter(".selected").each(function (d) {
+                                    restricted_categories = restricted_categories.concat(d.data.data.categories.map(function (cat) { return cat.id; }));
+                                });
+
+                                restricted_categories = restricted_categories.filter(function (h, i, arr) { return arr.indexOf(h) === i; })
+                            }
+
+                            while (!!parent.parent && !parent.data.data.breakpoint && (!parent.data.data.categories.length || !restricted_categories.length || parent.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false))) {
+                                parent = parent.parent;
+                                available_nodes.push(parent);
+                            }
+
+                            function rec(acc, child, i, arr) {
+                                if (child.data.data.breakpoint ||
+                                    child.data.data.categories.length && restricted_categories.length && !child.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false)) {
+                                    return acc;
                                 }
 
-                                return classes.join(" ")
-                            });
+                                available_nodes.push(child);
+
+                                if (child.height === 0) {
+                                    acc.push(child);
+                                    return acc;
+                                }
+
+                                return acc.concat(child.children.reduce(rec, []));
+                            }
+
+                            const children = parent.children.reduce(rec, []);
+
+                            node
+                                .classed("unreachable", function (d) { return available_nodes.indexOf(d) === -1 })
+                                .classed("selected", function (d) {
+                                    if (available_nodes.indexOf(d) === -1)
+                                        return false;
+
+                                    const client_rect = this.getBoundingClientRect(),
+                                        viewport_client_rect = this.viewportElement.getBoundingClientRect();
+
+                                    const node_top = client_rect.top - viewport_client_rect.top,
+                                        node_left = client_rect.left - viewport_client_rect.left,
+                                        node_bottom = client_rect.bottom - viewport_client_rect.top,
+                                        node_right = client_rect.right - viewport_client_rect.left;
+
+                                    return node_left < right && node_right > left && node_top < bottom && node_bottom > top;
+                                });
+                        })
+                        .on("end", function () {
+                            selection_rectangle.node.remove();
+                            g.style("pointer-events", null);
 
                             const selected_functions = [];
                             var selected_hypotheses = [];
+
+                            node.filter(".unreachable").classed("unreachable", false);
 
                             node.filter(".selected").each(function (d) {
                                 selected_functions.push(d.data.id);
