@@ -520,23 +520,14 @@ recursion <- function (exp, variables, functions, hypotheses,
 
     } else if (nrow(hypotheses)) {
       for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
-        selector <- apply(hypotheses, 1, function (hyp) func_id %in% hyp$functions);
+        func_args <- functions[functions$id == func_id, ]$arguments[[1]];
+
+        selector <- apply(hypotheses, 1, function (hyp) func_id %in% hyp$functions || hyp$id %in% func_args);
 
         if (nrow(hypotheses[selector, ])) {
           variables[var_index, ]$type <- "model";
 
           for (hyp_id in hypotheses[selector, ]$id) {
-            hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
-                                                                        variables[var_index, ]$id)
-          }
-        }
-
-        func_args = functions[functions$id == func_id, ]$arguments[[1]];
-
-        if (nrow(hypotheses[hypotheses$id %in% func_args, ])) {
-          variables[var_index, ]$type <- "model";
-
-          for (hyp_id in hypotheses[hypotheses$id %in% func_args, ]$id) {
             hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
                                                                         variables[var_index, ]$id)
           }
