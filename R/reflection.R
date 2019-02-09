@@ -102,19 +102,20 @@ find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
   } else if (is.name(exp[[length(exp)]])) {
     c(con_column_index, variables) %<-% find_variable(as.character(exp[[length(exp)]]), variables,
                                                       add = TRUE,
-                                                      type_constraint = "column",
+                                                      type_constraint = c("column", "constant"),
                                                       check_shadowing = FALSE)
 
     con_column_ids <- list(variables[con_column_index, ]$id)
   }
 
   if (length(exp) == 3) {
+    # TODO: detect lsmeans/emmeans contrast functions?
     name <- paste0(as.character(exp)[c(2, 1, 3)], collapse = ' ');
 
     if (is.name(exp[[2]])) {
       c(dep_column_index, variables) %<-% find_variable(as.character(exp[[2]]), variables,
                                                         add = TRUE,
-                                                        type_constraint = "column",
+                                                        type_constraint = c("column", "constant"),
                                                         check_shadowing = FALSE);
 
       dep_column_id <- variables[dep_column_index, ]$id;
@@ -755,6 +756,34 @@ recursion <- function (exp, variables, functions, hypotheses,
       c(func, variables, functions, hypotheses) %<-% argument_recursion(as.list(exp)[2:length(exp)], func,
                                                                         variables, functions, hypotheses,
                                                                         depth = depth, addition_mode = addition_mode);
+
+      # If in the "shallow" mode and any of the variables referenced in the hypothesis are not "columns"
+      #   -- brand them as such and add them to whichever "dataset" variable found within arguments of the same function
+      if (!eval_ && nrow(hypotheses)) {
+        hypothesis_selector <- apply(hypotheses, 1, function (h) func$id %in% h$functions || h$id %in% func$arguments)
+
+        if (nrow(hypotheses[hypothesis_selector, ])) {
+          columns <- hypotheses[hypothesis_selector, ]$columns[[1]]
+
+          column_list <- columns$control
+
+          if (!is.null(columns$dependant))
+            column_list <- append(column_list, columns$dependant)
+
+          constant_selector <- variables$type != "column" & apply(variables, 1, function (v) v$id %in% column_list)
+          dataset_selector <- variables$type == "data" & apply(variables, 1, function (v) v$id %in% func$arguments)
+
+          if (any(constant_selector) && nrow(variables[dataset_selector, ])) {
+            data_var <- as.list(variables[dataset_selector, ])
+
+            for (col_id in column_list)
+              if (!(col_id %in% data_var$columns)) {
+                variables[variables$id == col_id, ]$type <- "column"
+                data_var$columns[[1]] <- append(data_var$columns[[1]], col_id)
+              }
+          }
+        }
+      }
 
       # TODO: improve the hypothesis selection
       if (nrow(hypotheses)) {
