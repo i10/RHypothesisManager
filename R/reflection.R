@@ -34,21 +34,21 @@ parse <- function (text, interactive = FALSE) {
         expr = {
           line <- paste0(text[line_no1:line_no2], collapse="\n");
 
-          row <- base::parse(text=paste0(text[line_no1:line_no2], collapse="\n"));
+          row <- base::parse(text=line);
 
           if (!is.language(row) || length(row) == 0) {
             break;
           }
 
-          row <- row[[1]];
+          for (exp in row) {
+            before_funcs <- nrow(functions);
 
-          before_funcs <- nrow(functions);
+            c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses)
 
-          c(variables, functions, hypotheses) %<-% recursion(row, variables, functions, hypotheses)
-
-          if (nrow(functions) > before_funcs) {
-            functions[(before_funcs + 1):nrow(functions), ]$lines <- list(list(line_no1, line_no2));
-            functions[nrow(functions), ]$signature <- line;
+            if (nrow(functions) > before_funcs) {
+              functions[(before_funcs + 1):nrow(functions), ]$lines <- list(list(line_no1, line_no2));
+              functions[nrow(functions), ]$signature <- line;
+            }
           }
 
           break;
