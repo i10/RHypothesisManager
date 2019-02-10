@@ -32,6 +32,10 @@ body {
     overflow: auto;
     -webkit-flex-grow: 1;
     -webkit-flex-basis: calc(100% - 360px);
+
+    padding-top: 20px;
+
+    background-color: hsl(0, 0%, 95%);
 }
 
 #wrapper > svg {
@@ -54,8 +58,9 @@ body {
 }
 
 svg > #canvas {
-    fill: transparent;
-    stroke: transparent;
+    fill: white;
+    stroke: lightgray;
+    stroke-width: 2px;
 }
 
 #legend {
