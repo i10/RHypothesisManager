@@ -1228,27 +1228,17 @@ addin <- function () {
             }
           }
 
-        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$copy_hypothesis, ]$functions[[1]])
-
-        t <- FALSE
-        for (i in 1:nrow(functions)) {
-          if (function_selector[i] && functions[i, ]$depth > 1) {
-            t <- TRUE
-            function_selector[i] <- FALSE
-
-          } else if (t && functions[i, ]$depth == 1) {
-            function_selector[i] <- TRUE;
-            t <- FALSE
-          }
-        }
-
-        function_selector <- function_selector & apply(functions, 1, function (f) f$id %in% input$select)
+        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
 
         last_func_index <- Position(function (x) x, function_selector, right = TRUE)
 
-        breakpoint_function <- functions[1:nrow(functions) > last_func_index & !is.na(functions$breakpoint), ][1, ]
+        breakpoint_function <- functions[1:nrow(functions) > last_func_index & !is.na(functions$breakpoint), ]
 
-        row <- breakpoint_function$lines[[1]][[1]] - 1
+        if (nrow(breakpoint_function))
+          row <- breakpoint_function[1, ]$lines[[1]][[1]] - 1
+
+        else
+          row <- Inf
 
         position <- document_position(row, 0)
 
@@ -1257,7 +1247,7 @@ addin <- function () {
 
           ff <- functions[function_selector, ]
 
-          for (signature in rev(ff$signature)) {
+          for (signature in (if (row == Inf) ff$signature else rev(ff$signature))) {
             for (old_name in names(mapping))
               signature <- gsub(old_name, mapping[old_name], signature)
 
