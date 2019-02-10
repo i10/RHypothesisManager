@@ -1,7 +1,7 @@
 Package: HypothesisManagerPlugin
 Type: Package
 Title: Visual and Functional Aids to Support the Statistical Analysis Workflow
-Version: 0.5
+Version: 0.6
 Encoding: UTF-8
 LazyData: true
 Depends:
