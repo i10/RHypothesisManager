@@ -1242,17 +1242,22 @@ addin <- function () {
           }
         }
 
-        function_selector <- function_selector | apply(functions, 1, function (f) f$id %in% input$select)
+        function_selector <- function_selector & apply(functions, 1, function (f) f$id %in% input$select)
 
-        # TODO: find or get the breakpoint
-        position <- document_position(Inf, 0)
+        last_func_index <- Position(function (x) x, function_selector, right = TRUE)
+
+        breakpoint_function <- functions[1:nrow(functions) > last_func_index & !is.na(functions$breakpoint), ][1, ]
+
+        row <- breakpoint_function$lines[[1]][[1]] - 1
+
+        position <- document_position(row, 0)
 
         if (any(function_selector)) {
           insertText(position, "\n")
 
-          ff = functions[function_selector, ]
+          ff <- functions[function_selector, ]
 
-          for (signature in ff$signature) {
+          for (signature in rev(ff$signature)) {
             for (old_name in names(mapping))
               signature <- gsub(old_name, mapping[old_name], signature)
 
