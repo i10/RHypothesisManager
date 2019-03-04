@@ -8,7 +8,8 @@ HTMLWidgets.widget({
 
         const menu = container.select("#menu");
         const svg = container.select("svg");
-        const copy = container.select("#copy");
+        const copy = container.select("#copy"),
+            edit = container.select("#edit");
         const selector = container.select("#selector > ul");
         const legend = container.select("#legend > ul");
         const tooltip = container.select("#tooltip")
@@ -25,6 +26,7 @@ HTMLWidgets.widget({
                 legend.selectAll("*").remove();
 
                 copy.property("disabled", true);
+                edit.property("disabled", true);
                 tooltip.attr("style", null);
                 tooltip_content.selectAll("*").remove();
 
@@ -614,10 +616,12 @@ HTMLWidgets.widget({
 
                             if (selected_hypotheses_ids.length === 1) {
                                 copy.property("disabled", false);
+                                edit.property("disabled", false);
                                 Shiny.setInputValue("copy_hypothesis", selected_hypotheses_ids[0]);
 
                             } else {
                                 copy.property("disabled", true);
+                                edit.property("disabled", true);
                                 Shiny.setInputValue("copy_hypothesis", null);
                             }
                         });

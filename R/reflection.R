@@ -1198,6 +1198,57 @@ addin <- function () {
     )
 
     observeEvent(
+      input$edit,
+      {
+        showModal(hypothesisEditor(
+          hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
+          title = "Edit",
+          action_id = "replace_selection",
+          variables = variables
+        ))
+      }
+    )
+
+    observeEvent(
+      input$replace_selection,
+      {
+        removeModal()
+
+        mapping <- list()
+
+        for (name in names(input))
+          if (startsWith(name, "v-")) {
+            var <- as.list(variables[variables$id == name, ])
+
+            if (startsWith(input[[name]], "v-")) {
+              mapping[var$name] <- variables[variables$id == input[[name]], ]$name
+
+            } else {
+              mapping[var$name] <- input[[name]]
+            }
+          }
+
+        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
+
+        if (any(function_selector)) {
+          ff = functions[function_selector, ]
+
+          for (i in 1:nrow(ff)) {
+            func <- as.list(ff[i,])
+
+            signature <- func$signature
+            range <- document_range(c(func$lines[[1]][[1]], 0), c(func$lines[[1]][[2]], Inf))
+
+            for (old_name in names(mapping))
+            signature <- gsub(old_name, mapping[old_name], signature)
+
+            insertText(range, signature)
+          }
+        }
+      }
+    )
+
+    observeEvent(
       input$copy,
       {
         showModal(hypothesisEditor(

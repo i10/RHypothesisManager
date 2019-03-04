@@ -46,6 +46,13 @@ body {
     right: 10px;
 }
 
+#wrapper > button#edit {
+    position: absolute;
+
+    bottom: 10px;
+    right: 110px;
+}
+
 svg > #canvas {
     fill: transparent;
     stroke: transparent;
