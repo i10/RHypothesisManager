@@ -245,6 +245,8 @@ HTMLWidgets.widget({
 
                     const breadth = Math.max.apply(null, breadth_seek(Array(depth), nodes));
 
+                    // TODO: collect the sizes of the nodes after the texts are added,
+                    //       find 3rd quartile, set the default width to fit that size
                     const tree = d3.tree().size([breadth * 120, depth * 30]);
 
                     // maps the node data to the tree layout
@@ -276,16 +278,11 @@ HTMLWidgets.widget({
                     var node = g.selectAll(".node")
                         .data(nodes.descendants())
                         .enter().append("g")
-                        .attr("class", function (d) {
-                            const func = d.data.data;
-
-                            return [
-                                "node",
-                                (d.children ? "node--internal" : "node--leaf"),
-                                (func.breakpoint ? "breakpoint" : ""),
-                                (func.marker ? "marker" : "")
-                            ].join(" ").trim();
-                        })
+                        .classed("node",            true)
+                        .classed("node--internal",  function (d) { return !!d.children; })
+                        .classed("node--leaf",      function (d) { return !d.children; })
+                        .classed("breakpoint",      function (d) { return !!d.data.data.breakpoint; })
+                        .classed("marker",          function (d) { return !!d.data.data.marker; })
                         .attr("transform", function (d) {
                             return "translate(" + d.x + "," + d.y + ")";
                         })
