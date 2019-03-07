@@ -477,6 +477,19 @@ HTMLWidgets.widget({
                                     y: event.offsetY
                                 });
 
+                            node.classed("selected", function (d) {
+                                const client_rect = this.getBoundingClientRect(),
+                                    viewport_client_rect = this.viewportElement.getBoundingClientRect();
+
+                                const node_top = client_rect.top - viewport_client_rect.top,
+                                    node_left = client_rect.left - viewport_client_rect.left,
+                                    node_bottom = client_rect.bottom - viewport_client_rect.top,
+                                    node_right = client_rect.right - viewport_client_rect.left;
+
+                                return node_left < event.offsetX && node_right > event.offsetX &&
+                                    node_top < event.offsetY && node_bottom > event.offsetY;
+                            });
+
                             g.style("pointer-events", "none");
                         })
                         .on("drag", function () {
@@ -501,76 +514,85 @@ HTMLWidgets.widget({
                                 x: event.offsetX - selection_rectangle.anchor.x,
                                 y: event.offsetY - selection_rectangle.anchor.y
                             };
-                            direction.distance = Math.sqrt(Math.pow(direction.x, 2) + Math.pow(direction.y, 2));
-                            direction.axis = Math.abs(direction.x) >= Math.abs(direction.y) ? "x" : "y";
-                            direction.x /= Math.abs(direction.x);
-                            direction.y /= Math.abs(direction.y);
 
-                            var closest_node_distance = Infinity;
-                            var closest_node;
+                            const available_nodes = (function (direction) {
+                                const closest_node = (function (direction) {
+                                    direction.distance = Math.sqrt(Math.pow(direction.x, 2) + Math.pow(direction.y, 2));
+                                    direction.axis = Math.abs(direction.x) >= Math.abs(direction.y) ? "x" : "y";
+                                    direction.x /= Math.abs(direction.x);
+                                    direction.y /= Math.abs(direction.y);
 
-                            node.each(function (d) {
-                                const $this = d3.select(this);
+                                    var closest_node_distance = Infinity;
+                                    var closest_node;
 
-                                const client_rect = $this.select(".circle").node().getBoundingClientRect(),
-                                    viewport_client_rect = this.viewportElement.getBoundingClientRect();
+                                    node.each(function (d) {
+                                        const $this = d3.select(this);
 
-                                const node_direction = {
-                                    x: client_rect.left - viewport_client_rect.left + client_rect.width / 2 - selection_rectangle.anchor.x,
-                                    y: client_rect.top - viewport_client_rect.top + client_rect.height / 2 - selection_rectangle.anchor.y
-                                };
+                                        const client_rect = $this.select(".circle").node().getBoundingClientRect(),
+                                            viewport_client_rect = this.viewportElement.getBoundingClientRect();
 
-                                node_direction.axis = Math.abs(node_direction.x) > Math.abs(node_direction.y) ? "x" : "y";
-                                node_direction.distance = Math.sqrt(Math.pow(node_direction.x, 2) + Math.pow(node_direction.y, 2));
-                                node_direction.x /= Math.abs(node_direction.x);
-                                node_direction.y /= Math.abs(node_direction.y);
+                                        const node_direction = {
+                                            x: client_rect.left - viewport_client_rect.left + client_rect.width / 2 - selection_rectangle.anchor.x,
+                                            y: client_rect.top - viewport_client_rect.top + client_rect.height / 2 - selection_rectangle.anchor.y
+                                        };
 
-                                if ((direction.axis === node_direction.axis) &&
-                                    (direction[direction.axis] === node_direction[node_direction.axis]) &&
-                                    node_direction.distance < closest_node_distance) {
-                                    closest_node_distance = node_direction.distance;
-                                    closest_node = d;
-                                }
-                            });
+                                        node_direction.axis = Math.abs(node_direction.x) > Math.abs(node_direction.y) ? "x" : "y";
+                                        node_direction.distance = Math.sqrt(Math.pow(node_direction.x, 2) + Math.pow(node_direction.y, 2));
+                                        node_direction.x /= Math.abs(node_direction.x);
+                                        node_direction.y /= Math.abs(node_direction.y);
 
-                            if (!closest_node)
-                                return;
+                                        if ((direction.axis === node_direction.axis) &&
+                                            (direction[direction.axis] === node_direction[node_direction.axis]) &&
+                                            node_direction.distance < closest_node_distance) {
+                                            closest_node_distance = node_direction.distance;
+                                            closest_node = d;
+                                        }
+                                    });
 
-                            const available_nodes = [closest_node];
-                            var parent = closest_node;
+                                    return closest_node;
+                                })(direction);
 
-                            var restricted_categories = closest_node.data.data.categories.map(function (cat) { return cat.id; });
+                                if (!closest_node)
+                                    return;
 
-                            if (!restricted_categories.length && node.filter(".selected").size()) {
-                                node.filter(".selected").each(function (d) {
-                                    restricted_categories = restricted_categories.concat(d.data.data.categories.map(function (cat) { return cat.id; }));
-                                });
+                                const available_nodes = [closest_node];
+                                var parent = closest_node;
 
-                                restricted_categories = restricted_categories.filter(function (h, i, arr) { return arr.indexOf(h) === i; })
-                            }
+                                var restricted_categories = closest_node.data.data.categories.map(function (cat) { return cat.id; });
 
-                            while (!!parent.parent && !parent.data.data.breakpoint && (!parent.data.data.categories.length || !restricted_categories.length || parent.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false))) {
-                                parent = parent.parent;
-                                available_nodes.push(parent);
-                            }
+                                if (!restricted_categories.length && node.filter(".selected").size()) {
+                                    node.filter(".selected").each(function (d) {
+                                        restricted_categories = restricted_categories.concat(d.data.data.categories.map(function (cat) { return cat.id; }));
+                                    });
 
-                            function rec(acc, child, i, arr) {
-                                if (child.data.data.breakpoint ||
-                                    child.data.data.categories.length && restricted_categories.length && !child.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false)) {
-                                    return acc;
+                                    restricted_categories = restricted_categories.filter(function (h, i, arr) { return arr.indexOf(h) === i; })
                                 }
 
-                                available_nodes.push(child);
-
-                                if (child.height === 0) {
-                                    acc.push(child);
-                                    return acc;
+                                while (!!parent.parent && !parent.data.data.breakpoint && (!parent.data.data.categories.length || !restricted_categories.length || parent.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false))) {
+                                    parent = parent.parent;
+                                    available_nodes.push(parent);
                                 }
 
-                                return acc.concat(child.children.reduce(rec, []));
-                            }
+                                function rec(acc, child, i, arr) {
+                                    if (child.data.data.breakpoint ||
+                                        child.data.data.categories.length && restricted_categories.length && !child.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false)) {
+                                        return acc;
+                                    }
 
-                            const children = parent.children.reduce(rec, []);
+                                    available_nodes.push(child);
+
+                                    if (child.height === 0) {
+                                        acc.push(child);
+                                        return acc;
+                                    }
+
+                                    return acc.concat(child.children.reduce(rec, []));
+                                }
+
+                                const children = parent.children.reduce(rec, []);
+
+                                return available_nodes;
+                            })(direction);
 
                             node
                                 .classed("unreachable", function (d) { return available_nodes.indexOf(d) === -1 })
