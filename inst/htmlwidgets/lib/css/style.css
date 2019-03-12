@@ -32,11 +32,35 @@ body {
     overflow: auto;
     -webkit-flex-grow: 1;
     -webkit-flex-basis: calc(100% - 360px);
+
+    padding-top: 20px;
+
+    background-color: hsl(0, 0%, 95%);
 }
 
 #wrapper > svg {
     display: block;
     margin: 0 auto;
+}
+
+#wrapper > button#copy {
+    position: absolute;
+
+    bottom: 10px;
+    right: 10px;
+}
+
+#wrapper > button#edit {
+    position: absolute;
+
+    bottom: 10px;
+    right: 110px;
+}
+
+svg > #canvas {
+    fill: white;
+    stroke: lightgray;
+    stroke-width: 2px;
 }
 
 #legend {
@@ -128,6 +152,19 @@ body {
     stroke: transparent;
 }
 
+.node.selected text {
+    stroke: white;
+    fill: white;
+}
+
+.node.selected rect {
+    fill: dodgerblue;
+}
+
+.node.unreachable {
+    opacity: 0.5;
+}
+
 text {
     font: 12px sans-serif;
     stroke: #444444;
@@ -165,6 +202,11 @@ text {
 #tooltip hr {
     border: inherit;
     margin: 0.5em;
+}
+
+rect#select {
+    stroke: rgba(31, 147, 255, 1);
+    fill: rgba(31, 147, 255, 0.22);
 }
 
 .legend {

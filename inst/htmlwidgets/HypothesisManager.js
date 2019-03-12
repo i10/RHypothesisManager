@@ -8,6 +8,8 @@ HTMLWidgets.widget({
 
         const menu = container.select("#menu");
         const svg = container.select("svg");
+        const copy = container.select("#copy"),
+            edit = container.select("#edit");
         const selector = container.select("#selector > ul");
         const legend = container.select("#legend > ul");
         const tooltip = container.select("#tooltip")
@@ -23,8 +25,8 @@ HTMLWidgets.widget({
                 selector.selectAll("*").remove();
                 legend.selectAll("*").remove();
 
-                const defs = svg.append("defs");
-
+                copy.property("disabled", true);
+                edit.property("disabled", true);
                 tooltip.attr("style", null);
                 tooltip_content.selectAll("*").remove();
 
@@ -243,6 +245,8 @@ HTMLWidgets.widget({
 
                     const breadth = Math.max.apply(null, breadth_seek(Array(depth), nodes));
 
+                    // TODO: collect the sizes of the nodes after the texts are added,
+                    //       find 3rd quartile, set the default width to fit that size
                     const tree = d3.tree().size([breadth * 120, depth * 30]);
 
                     // maps the node data to the tree layout
@@ -274,16 +278,11 @@ HTMLWidgets.widget({
                     var node = g.selectAll(".node")
                         .data(nodes.descendants())
                         .enter().append("g")
-                        .attr("class", function (d) {
-                            const func = d.data.data;
-
-                            return [
-                                "node",
-                                (d.children ? "node--internal" : "node--leaf"),
-                                (func.breakpoint ? "breakpoint" : ""),
-                                (func.marker ? "marker" : "")
-                            ].join(" ").trim();
-                        })
+                        .classed("node",            true)
+                        .classed("node--internal",  function (d) { return !!d.children; })
+                        .classed("node--leaf",      function (d) { return !d.children; })
+                        .classed("breakpoint",      function (d) { return !!d.data.data.breakpoint; })
+                        .classed("marker",          function (d) { return !!d.data.data.marker; })
                         .attr("transform", function (d) {
                             return "translate(" + d.x + "," + d.y + ")";
                         })
@@ -353,10 +352,6 @@ HTMLWidgets.widget({
                             if (!(x >= bbox.left && x <= bbox.right && y >= bbox.top && y <= bbox.bottom)) {
                                 tooltip.style("display", "none");
                             }
-                        })
-                        .on("click", function(d) {
-                            const func = d.data.data;
-                            Shiny.setInputValue("goto", func.lines);
                         });
 
                     // adds the circle to the node
@@ -418,12 +413,23 @@ HTMLWidgets.widget({
 
                     const bbox = g.node().getBoundingClientRect();
 
-                    g.attr("transform", "translate(" + -(bbox.left + svg.node().parentNode.scrollLeft - svg.node().offsetLeft - 25) + ", 50)");
+                    const offsetLeft = -(bbox.left + svg.node().parentNode.scrollLeft - svg.node().offsetLeft - 25);
+
+                    g.attr("transform", "translate(" + offsetLeft + ", 50)");
 
                     svg.attrs({
                         width: bbox.width + 50,
                         height: bbox.height + 50
                     });
+
+                    svg.insert("rect", "g")
+                        .attrs({
+                            id: "canvas",
+                            x: 0,
+                            y: 0,
+                            width: "100%",
+                            height: "100%"
+                        });
 
                     const stream_categories = stream_.functions
                         .reduce(function (acc, func, i, arr) {
@@ -439,11 +445,8 @@ HTMLWidgets.widget({
                     const categories = legend.selectAll("li")
                         .data(hypotheses)
                         .enter().append("li")
-                        .attr("class", function (d) {
-                            return ["legend",
-                                stream_categories.indexOf(d.id) === -1 ? "useless" : ""
-                            ].join(" ").trim();
-                        })
+                        .classed("legend", true)
+                        .classed("useless", function (d) { return stream_categories.indexOf(d.id) === -1 })
                         .attr("title", function (d) { return d.name; })
                         .on("click", function (d) {
                             Shiny.setInputValue("edit_hypothesis", d.id);
@@ -457,6 +460,192 @@ HTMLWidgets.widget({
                         .attr("class", null)
                         .filter(function (d, ii) { return ii === i;})
                         .attr("class", "chosen");
+
+                    const selection_rectangle = {};
+
+                    const drag = d3.drag()
+                        .on("start", function () {
+                            const event = d3.event.sourceEvent;
+
+                            event.preventDefault();
+
+                            selection_rectangle.anchor = {x: event.offsetX, y: event.offsetY};
+                            selection_rectangle.node = svg.append("rect")
+                                .attrs({
+                                    id: "select",
+                                    x: event.offsetX,
+                                    y: event.offsetY
+                                });
+
+                            node.classed("selected", function (d) {
+                                const client_rect = this.getBoundingClientRect(),
+                                    viewport_client_rect = this.viewportElement.getBoundingClientRect();
+
+                                const node_top = client_rect.top - viewport_client_rect.top,
+                                    node_left = client_rect.left - viewport_client_rect.left,
+                                    node_bottom = client_rect.bottom - viewport_client_rect.top,
+                                    node_right = client_rect.right - viewport_client_rect.left;
+
+                                return node_left < event.offsetX && node_right > event.offsetX &&
+                                    node_top < event.offsetY && node_bottom > event.offsetY;
+                            });
+
+                            g.style("pointer-events", "none");
+                        })
+                        .on("drag", function () {
+                            const event = d3.event.sourceEvent;
+
+                            const top = Math.min(selection_rectangle.anchor.y, event.offsetY),
+                                left = Math.min(selection_rectangle.anchor.x, event.offsetX),
+                                bottom = Math.max(selection_rectangle.anchor.y, event.offsetY),
+                                right = Math.max(selection_rectangle.anchor.x, event.offsetX);
+
+                            if (event.target.parentNode !== svg.node() && event.target !== svg.node())
+                                return;
+
+                            selection_rectangle.node.attrs({
+                                x: left,
+                                y: top,
+                                width: right - left,
+                                height: bottom - top
+                            });
+
+                            const direction = {
+                                x: event.offsetX - selection_rectangle.anchor.x,
+                                y: event.offsetY - selection_rectangle.anchor.y
+                            };
+
+                            const available_nodes = (function (direction) {
+                                const closest_node = (function (direction) {
+                                    direction.distance = Math.sqrt(Math.pow(direction.x, 2) + Math.pow(direction.y, 2));
+                                    direction.axis = Math.abs(direction.x) >= Math.abs(direction.y) ? "x" : "y";
+                                    direction.x /= Math.abs(direction.x);
+                                    direction.y /= Math.abs(direction.y);
+
+                                    var closest_node_distance = Infinity;
+                                    var closest_node;
+
+                                    node.each(function (d) {
+                                        const $this = d3.select(this);
+
+                                        const client_rect = $this.select(".circle").node().getBoundingClientRect(),
+                                            viewport_client_rect = this.viewportElement.getBoundingClientRect();
+
+                                        const node_direction = {
+                                            x: client_rect.left - viewport_client_rect.left + client_rect.width / 2 - selection_rectangle.anchor.x,
+                                            y: client_rect.top - viewport_client_rect.top + client_rect.height / 2 - selection_rectangle.anchor.y
+                                        };
+
+                                        node_direction.axis = Math.abs(node_direction.x) > Math.abs(node_direction.y) ? "x" : "y";
+                                        node_direction.distance = Math.sqrt(Math.pow(node_direction.x, 2) + Math.pow(node_direction.y, 2));
+                                        node_direction.x /= Math.abs(node_direction.x);
+                                        node_direction.y /= Math.abs(node_direction.y);
+
+                                        if ((direction.axis === node_direction.axis) &&
+                                            (direction[direction.axis] === node_direction[node_direction.axis]) &&
+                                            node_direction.distance < closest_node_distance) {
+                                            closest_node_distance = node_direction.distance;
+                                            closest_node = d;
+                                        }
+                                    });
+
+                                    return closest_node;
+                                })(direction);
+
+                                if (!closest_node)
+                                    return;
+
+                                const available_nodes = [closest_node];
+                                var parent = closest_node;
+
+                                var restricted_categories = closest_node.data.data.categories.map(function (cat) { return cat.id; });
+
+                                if (!restricted_categories.length && node.filter(".selected").size()) {
+                                    node.filter(".selected").each(function (d) {
+                                        restricted_categories = restricted_categories.concat(d.data.data.categories.map(function (cat) { return cat.id; }));
+                                    });
+
+                                    restricted_categories = restricted_categories.filter(function (h, i, arr) { return arr.indexOf(h) === i; })
+                                }
+
+                                while (!!parent.parent && !parent.data.data.breakpoint && (!parent.data.data.categories.length || !restricted_categories.length || parent.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false))) {
+                                    parent = parent.parent;
+                                    available_nodes.push(parent);
+                                }
+
+                                function rec(acc, child, i, arr) {
+                                    if (child.data.data.breakpoint ||
+                                        child.data.data.categories.length && restricted_categories.length && !child.data.data.categories.map(function (cat) { return cat.id; }).reduce(function(acc, cat) { return acc || restricted_categories.indexOf(cat) !== -1; }, false)) {
+                                        return acc;
+                                    }
+
+                                    available_nodes.push(child);
+
+                                    if (child.height === 0) {
+                                        acc.push(child);
+                                        return acc;
+                                    }
+
+                                    return acc.concat(child.children.reduce(rec, []));
+                                }
+
+                                const children = parent.children.reduce(rec, []);
+
+                                return available_nodes;
+                            })(direction);
+
+                            node
+                                .classed("unreachable", function (d) { return available_nodes.indexOf(d) === -1 })
+                                .classed("selected", function (d) {
+                                    if (available_nodes.indexOf(d) === -1)
+                                        return false;
+
+                                    const client_rect = this.getBoundingClientRect(),
+                                        viewport_client_rect = this.viewportElement.getBoundingClientRect();
+
+                                    const node_top = client_rect.top - viewport_client_rect.top,
+                                        node_left = client_rect.left - viewport_client_rect.left,
+                                        node_bottom = client_rect.bottom - viewport_client_rect.top,
+                                        node_right = client_rect.right - viewport_client_rect.left;
+
+                                    return node_left < right && node_right > left && node_top < bottom && node_bottom > top;
+                                });
+                        })
+                        .on("end", function () {
+                            selection_rectangle.node.remove();
+                            g.style("pointer-events", null);
+
+                            const selected_functions = [];
+                            var selected_hypotheses = [];
+
+                            node.filter(".unreachable").classed("unreachable", false);
+
+                            node.filter(".selected").each(function (d) {
+                                selected_functions.push(d.data.id);
+                                selected_hypotheses = selected_hypotheses.concat(d.data.data.categories);
+                            });
+
+                            if (selected_functions.length) {
+                                Shiny.setInputValue("select", selected_functions)
+                            }
+
+                            const selected_hypotheses_ids = selected_hypotheses
+                                .map(function (h) { return h.id; })
+                                .filter(function (h, i, arr) { return arr.indexOf(h) === i; });
+
+                            if (selected_hypotheses_ids.length === 1) {
+                                copy.property("disabled", false);
+                                edit.property("disabled", false);
+                                Shiny.setInputValue("copy_hypothesis", selected_hypotheses_ids[0]);
+
+                            } else {
+                                copy.property("disabled", true);
+                                edit.property("disabled", true);
+                                Shiny.setInputValue("copy_hypothesis", null);
+                            }
+                        });
+
+                    svg.call(drag);
                 }
 
                 if (streams.length) {

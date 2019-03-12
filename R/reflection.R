@@ -845,6 +845,42 @@ simpleCheckbox <- function (id, label, value = FALSE, inline = FALSE, ...) {
 }
 
 
+hypothesisEditor <- function (hypothesis, title, action_id, variables) {
+  columns <- list("New column" = "")
+
+  for (id in variables[variables$type == "column", ]$id) {
+    col_name <- variables[variables$id == id, ]$name
+    dataset_name <- variables[apply(variables, 1, function (v) id %in% v$columns ), ]$name
+
+    name <- paste(c(col_name, "|", dataset_name), collapse = " ")
+
+    columns[[name]] <- id
+  }
+
+  modalDialog(
+    title = title,
+    if (!is.null(hypothesis$columns[[1]]$dependant)) {
+      var <- as.list(variables[variables$id == hypothesis$columns[[1]]$dependant, ])
+        tagList(
+        selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                       options = list("create" = TRUE)),
+        tags$hr()
+      )
+    },
+    tagList(list = lapply(hypothesis$columns[[1]]$control, function (col_id) {
+      var <- as.list(variables[variables$id == col_id, ])
+      selectizeInput(var$id, var$name, choices = columns, selected = var$id,
+                     options = list("create" = TRUE))
+    })),
+    footer = tagList(
+      tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
+      modalButton("Cancel"),
+      actionButton(action_id, "OK")
+    )
+  )
+}
+
+
 addin <- function () {
   library(miniUI);
   library(rstudioapi);
@@ -1026,6 +1062,20 @@ addin <- function () {
     )
 
     observeEvent(
+      input$select,
+      {
+        selector <- apply(functions, 1, function (f) f$id %in% input$select)
+
+        selection_ranges <- lapply(
+          functions[selector, ]$lines,
+          function (lines) document_range(c(lines[[1]], 0), c(lines[[2]], Inf))
+        )
+
+        setSelectionRanges(selection_ranges)
+      }
+    )
+
+    observeEvent(
       input$comment,
       {
         c(line_no1, line_no2) %<-% lapply(input$comment, as.integer);
@@ -1085,34 +1135,13 @@ addin <- function () {
     observeEvent(
       input$edit_hypothesis,
       {
-        hyp <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
+        hypothesis <- as.list(hypotheses[hypotheses$id == input$edit_hypothesis, ])
 
-        columns <- list("New column" = "")
-
-        for (id in variables[variables$type == "column", ]$id) {
-          columns[[variables[variables$id == id, ]$name]] <- id
-        }
-
-        showModal(modalDialog(
-          title = paste0(c("Edit hypothesis", hyp$name), collapse = " "),
-          if (!is.null(hyp$columns[[1]]$dependant)) {
-            var <- as.list(variables[variables$id == hyp$columns[[1]]$dependant, ])
-            tagList(
-              selectizeInput(var$id, var$name, choices = columns, selected = var$id,
-                             options = list("create" = TRUE)),
-              tags$hr()
-            )
-          },
-          tagList(list = lapply(hyp$columns[[1]]$control, function (col_id) {
-            var <- as.list(variables[variables$id == col_id, ])
-            selectizeInput(var$id, var$name, choices = columns, selected = var$id,
-                           options = list("create" = TRUE))
-          })),
-          footer = tagList(
-            tags$p("Please note: replacement is made with a regex,", tags$br(), "not with model reconstruciton", class = "footnote"),
-            modalButton("Cancel"),
-            actionButton("replace_hypothesis", "OK")
-          )
+        showModal(hypothesisEditor(
+          hypothesis = hypothesis,
+          title = paste0(c("Edit hypothesis", hypothesis$name), collapse = " "),
+          action_id = "replace_hypothesis",
+          variables = variables
         ))
       }
     )
@@ -1165,6 +1194,120 @@ addin <- function () {
             insertText(range, signature)
           }
         }
+      }
+    )
+
+    observeEvent(
+      input$edit,
+      {
+        showModal(hypothesisEditor(
+          hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
+          title = "Edit",
+          action_id = "replace_selection",
+          variables = variables
+        ))
+      }
+    )
+
+    observeEvent(
+      input$replace_selection,
+      {
+        removeModal()
+
+        mapping <- list()
+
+        for (name in names(input))
+          if (startsWith(name, "v-")) {
+            var <- as.list(variables[variables$id == name, ])
+
+            if (startsWith(input[[name]], "v-")) {
+              mapping[var$name] <- variables[variables$id == input[[name]], ]$name
+
+            } else {
+              mapping[var$name] <- input[[name]]
+            }
+          }
+
+        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
+
+        if (any(function_selector)) {
+          ff = functions[function_selector, ]
+
+          for (i in 1:nrow(ff)) {
+            func <- as.list(ff[i,])
+
+            signature <- func$signature
+            range <- document_range(c(func$lines[[1]][[1]], 0), c(func$lines[[1]][[2]], Inf))
+
+            for (old_name in names(mapping))
+            signature <- gsub(old_name, mapping[old_name], signature)
+
+            insertText(range, signature)
+          }
+        }
+      }
+    )
+
+    observeEvent(
+      input$copy,
+      {
+        showModal(hypothesisEditor(
+          hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
+          title = "Copy",
+          action_id = "paste",
+          variables = variables
+        ))
+      }
+    )
+
+    observeEvent(
+      input$paste,
+      {
+        removeModal()
+
+        mapping <- list()
+
+        for (name in names(input))
+          if (startsWith(name, "v-")) {
+            var <- as.list(variables[variables$id == name, ])
+
+            if (startsWith(input[[name]], "v-")) {
+              mapping[var$name] <- variables[variables$id == input[[name]], ]$name
+
+            } else {
+              mapping[var$name] <- input[[name]]
+            }
+          }
+
+        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
+
+        last_func_index <- Position(function (x) x, function_selector, right = TRUE)
+
+        breakpoint_function <- functions[1:nrow(functions) > last_func_index & !is.na(functions$breakpoint), ]
+
+        if (nrow(breakpoint_function))
+          row <- breakpoint_function[1, ]$lines[[1]][[1]] - 1
+
+        else
+          row <- Inf
+
+        position <- document_position(row, 0)
+
+        if (any(function_selector)) {
+          insertText(position, "\n")
+
+          ff <- functions[function_selector, ]
+
+          for (signature in (if (row == Inf) ff$signature else rev(ff$signature))) {
+            for (old_name in names(mapping))
+              signature <- gsub(old_name, mapping[old_name], signature)
+
+            insertText(position, paste0(c(signature, "\n"), collapse = ""))
+          }
+        }
+
+        # TODO: select the newly pasted functions
+        setCursorPosition(position)
       }
     )
 
