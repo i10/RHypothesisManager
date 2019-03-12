@@ -1,3 +1,4 @@
+import(diffobj)
 import(miniUI)
 import(shiny)
 import(uuid)

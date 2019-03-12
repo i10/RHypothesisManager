@@ -1,6 +1,3 @@
-library(uuid);
-
-
 own_error <- function (message, custom_code, call = sys.call(-1), ...) {
   structure(
     class = c("own_error", "error", "condition"),
@@ -9,8 +6,9 @@ own_error <- function (message, custom_code, call = sys.call(-1), ...) {
 }
 
 
-parse <- function (text, interactive = FALSE,
-                   variables = NULL, functions = NULL, hypotheses = NULL) {
+parse <- function (text, line_no1 = 1, line_non = NULL,
+                   variables = NULL, functions = NULL, hypotheses = NULL,
+                   interactive = FALSE) {
   # Prepare
   if (is.null(variables)) {
     variables <- data.frame(matrix(ncol = 8, nrow = 0));
@@ -30,9 +28,10 @@ parse <- function (text, interactive = FALSE,
   env <<- new.env()
 
   # Run loop
-  line_no1 <- 1;
+  if (is.null(line_non))
+    line_non <- length(text) + 1
 
-  while (line_no1 < length(text) + 1) {
+  while (line_no1 < line_non) {
     line_no2 <- line_no1;
     break_ <- FALSE;
 
@@ -966,32 +965,32 @@ addin <- function () {
             tryCatch(
               expr = withCallingHandlers(
                 expr = {
+                  first_line <- 1
+
                   if (isTruthy(old_text) && hash != old_hash) {
                     text_diff <- ses(old_text, textContents)
 
                     if (isTruthy(text_diff)) {
-                      first_diff_line <- as.integer(strsplit(text_diff, "[acd]")[[1]][[1]])
+                      first_line <- as.integer(strsplit(text_diff, "[acd]")[[1]][[1]])
 
-                      functions <- subset(functions, apply(functions, 1, function (f) f$lines[[1]] < first_diff_line))
+                      functions <- subset(functions, apply(functions, 1, function (f) f$lines[[1]] < first_line))
 
                       variables <- subset(variables, type == "column" | origin %in% functions$id)
                       variables <- subset(variables, type != "column" | id %in% unlist(variables$columns))
 
-                      hypotheses$functions <- lapply(hypotheses$functions,  function (f) as.list(intersect(f[[1]], functions$id)))
-                      hypotheses$models <-    lapply(hypotheses$models,     function (m) if (length(m)) as.list(intersect(m[[1]], variables$id)) else m)
-                      hypotheses$formulas <-  lapply(hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f[[1]], variables$id)) else f)
+                      hypotheses$functions <- lapply(hypotheses$functions,  function (f) as.list(intersect(f, functions$id)))
+                      hypotheses$models <-    lapply(hypotheses$models,     function (m) if (length(m)) as.list(intersect(m, variables$id)) else m)
+                      hypotheses$formulas <-  lapply(hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f, variables$id)) else f)
 
                       # TODO: work out how to remove the hypotheses with no functions attached to them
                       # hypotheses <- subset(hypotheses, length(functions) > 0)
-
-                      textContents <- textContents[first_diff_line:length(textContents)]
                     }
                   }
 
                   withProgress(
-                    expr = c(vv, ff, hh) %<-% parse(textContents, interactive = TRUE,
-                                                    variables, functions, hypotheses),
-                    min = 1,
+                    expr = c(vv, ff, hh) %<-% parse(textContents, first_line, interactive = TRUE,
+                                                    variables=variables, functions=functions, hypotheses=hypotheses),
+                    min = first_line,
                     max = length(textContents),
                     message = paste0(c("Loading", file_name), collapse = " ")
                   )
