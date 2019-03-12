@@ -820,15 +820,15 @@ recursion <- function (exp, variables, functions, hypotheses,
   # Is library name call
   } else if (is.call(exp) && identical(exp[[1]], quote(`::`))) {
     # Shouldn't really ever pop up
-    # TOOD: use to hint the exact package the function is being imported from?
+    # TODO: use to hint the exact package the function is being imported from?
 
   # Is paranthesis (?!)
   } else if (is.call(exp) && identical(exp[[1]], quote(`(`))) {
     c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
                                                        addition_mode = addition_mode, depth = depth);
 
-  # Is if/for clause
-  } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)))) {
+  # Is a control structure
+  } else if (is.call(exp) && (identical(exp[[1]], quote(`if`)) || identical(exp[[1]], quote(`for`)) || identical(exp[[1]], quote(`while`)) || identical(exp[[1]], quote(`repeat`)))) {
     # TODO: add conditional as the precursor?
 
     c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses,
@@ -838,7 +838,7 @@ recursion <- function (exp, variables, functions, hypotheses,
   } else if (is.call(exp) && identical(exp[[1]], quote(`{`))) {
     for (line in as.list(exp)[2:length(exp)])
       c(variables, functions, hypotheses) %<-% recursion(line, variables, functions, hypotheses,
-                                                       addition_mode = addition_mode, depth = depth);
+                                                         addition_mode = addition_mode, depth = depth)
 
   # Is a generic function call
   } else if (is.call(exp)) {
