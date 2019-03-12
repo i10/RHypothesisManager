@@ -9,16 +9,23 @@ own_error <- function (message, custom_code, call = sys.call(-1), ...) {
 }
 
 
-parse <- function (text, interactive = FALSE) {
+parse <- function (text, interactive = FALSE,
+                   variables = NULL, functions = NULL, hypotheses = NULL) {
   # Prepare
-  variables <- data.frame(matrix(ncol = 8, nrow = 0));
-  colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
+  if (is.null(variables)) {
+    variables <- data.frame(matrix(ncol = 8, nrow = 0));
+    colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
+  }
 
-  functions <- data.frame(matrix(ncol = 8, nrow = 0));
-  colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
+  if (is.null(functions)) {
+    functions <- data.frame(matrix(ncol = 8, nrow = 0));
+    colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
+  }
 
-  hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
-  colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
+  if (is.null(hypotheses)) {
+    hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
+    colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
+  }
 
   env <<- new.env()
 
@@ -914,8 +921,10 @@ addin <- function () {
   server <- function (input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);
 
-    old_path <- "";
-    old_hash <- "";
+    old_path <- ""
+    old_hash <- ""
+    old_text <- ""
+
     variables <- NULL
     functions <- NULL
     hypotheses <- NULL
@@ -945,14 +954,43 @@ addin <- function () {
             setwd(dirname(path))
 
           file_name <- basename(path)
-          hash <- digest::digest(textContents, "md5");
+          hash <- digest::digest(textContents, "md5")
+
+          if (path != old_path) {
+            variables <- NULL
+            functions <- NULL
+            hypotheses <- NULL
+          }
 
           if (path != old_path || hash != old_hash) {
             tryCatch(
               expr = withCallingHandlers(
                 expr = {
+                  if (isTruthy(old_text) && hash != old_hash) {
+                    text_diff <- ses(old_text, textContents)
+
+                    if (isTruthy(text_diff)) {
+                      first_diff_line <- as.integer(strsplit(text_diff, "[acd]")[[1]][[1]])
+
+                      functions <- subset(functions, apply(functions, 1, function (f) f$lines[[1]] < first_diff_line))
+
+                      variables <- subset(variables, type == "column" | origin %in% functions$id)
+                      variables <- subset(variables, type != "column" | id %in% unlist(variables$columns))
+
+                      hypotheses$functions <- lapply(hypotheses$functions,  function (f) as.list(intersect(f[[1]], functions$id)))
+                      hypotheses$models <-    lapply(hypotheses$models,     function (m) if (length(m)) as.list(intersect(m[[1]], variables$id)) else m)
+                      hypotheses$formulas <-  lapply(hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f[[1]], variables$id)) else f)
+
+                      # TODO: work out how to remove the hypotheses with no functions attached to them
+                      # hypotheses <- subset(hypotheses, length(functions) > 0)
+
+                      textContents <- textContents[first_diff_line:length(textContents)]
+                    }
+                  }
+
                   withProgress(
-                    expr = c(vv, ff, hh) %<-% parse(textContents, interactive = TRUE),
+                    expr = c(vv, ff, hh) %<-% parse(textContents, interactive = TRUE,
+                                                    variables, functions, hypotheses),
                     min = 1,
                     max = length(textContents),
                     message = paste0(c("Loading", file_name), collapse = " ")
@@ -1029,8 +1067,9 @@ addin <- function () {
               },
 
               finally = {
-                old_path <<- path;
-                old_hash <<- hash;
+                old_path <<- path
+                old_hash <<- hash
+                old_text <<- textContents
               }
             );
           }
