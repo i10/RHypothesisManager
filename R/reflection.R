@@ -29,13 +29,13 @@ parse <- function (text, line_no1 = 1, line_non = NULL,
 
   # Run loop
   if (is.null(line_non))
-    line_non <- length(text) + 1
+    line_non <- length(text)
 
-  while (line_no1 < line_non) {
+  while (line_no1 < line_non + 1) {
     line_no2 <- line_no1;
     break_ <- FALSE;
 
-    while (!break_ && line_no2 < length(text) + 1) {
+    while (!break_ && line_no2 < line_non + 1) {
       tryCatch(
         expr = {
           line <- paste0(text[line_no1:line_no2], collapse="\n");
@@ -967,33 +967,130 @@ addin <- function () {
                 expr = {
                   first_line <- 1
 
-                  if (isTruthy(old_text) && hash != old_hash) {
+                  vv <- variables
+                  ff <- functions
+                  hh <- hypotheses
+
+                  too_many_changes <- path != old_path || !isTruthy(old_text)
+
+                  if (!too_many_changes) {
                     text_diff <- ses(old_text, textContents)
 
-                    if (isTruthy(text_diff)) {
-                      first_line <- as.integer(strsplit(text_diff, "[acd]")[[1]][[1]])
+                    for (diff in text_diff) {
+                      # Introspect the diff data
+                      diff_type <- regmatches(diff, regexpr("[acd]", diff))
 
-                      functions <- subset(functions, apply(functions, 1, function (f) f$lines[[1]] < first_line))
+                      diff_pair <- lapply(
+                        strsplit(diff, "[acd]"),
+                        function (line) lapply(
+                          line,
+                          function (part) as.integer(if (grepl(",", part)) strsplit(part, ",")[[1]] else c(part, part))
+                        )
+                      )[[1]]
 
-                      variables <- subset(variables, type == "column" | origin %in% functions$id)
-                      variables <- subset(variables, type != "column" | id %in% unlist(variables$columns))
+                      c(first_line, last_line) %<-% diff_pair[[1]]
+                      c(new_first_line, new_last_line) %<-% diff_pair[[2]]
 
-                      hypotheses$functions <- lapply(hypotheses$functions,  function (f) as.list(intersect(f, functions$id)))
-                      hypotheses$models <-    lapply(hypotheses$models,     function (m) if (length(m)) as.list(intersect(m, variables$id)) else m)
-                      hypotheses$formulas <-  lapply(hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f, variables$id)) else f)
+                      diff_size <- (last_line - first_line) - (new_last_line - new_first_line)
 
-                      # TODO: work out how to remove the hypotheses with no functions attached to them
-                      # hypotheses <- subset(hypotheses, length(functions) > 0)
+                      # Process the old functions that are being changed in the diff
+                      changed_ff <- subset(ff, sapply(ff$lines, function (lines) first_line <= lines[[2]] && lines[[1]] <= last_line))
+
+                      changed_vv <- subset(vv, origin %in% changed_ff$id | id %in% changed_ff$breakpoint)
+
+                      offset_before <- first_line - changed_ff[1, ]$lines[[1]][[1]]
+                      offset_after <- changed_ff[nrow(changed_ff), ]$lines[[1]][[2]] - last_line
+
+                      # Reconstruct the model at the state just before the modified lines
+                      old_ff <- subset(ff,      sapply(lines, function (lines) lines[[2]]) < first_line - offset_before)
+
+                      old_vv <- subset(vv,      type == "column" | origin %in% ff$id)
+                      old_vv <- subset(old_vv,  type != "column" | id %in% unlist(vv$columns))
+
+                      # TODO: rewrite with magrittr?
+                      old_hh <- hh
+
+                      old_hh$functions <- lapply(old_hh$functions,  function (f) if (length(f)) as.list(intersect(f, old_ff$id)) else f)
+                      old_hh$models <-    lapply(old_hh$models,     function (m) if (length(m)) as.list(intersect(m, old_vv$id)) else m)
+                      old_hh$formulas <-  lapply(old_hh$formulas,   function (f) if (length(f)) as.list(intersect(f, old_vv$id)) else f)
+
+                      old_hh <- subset(old_hh, lapply(old_hh$functions, length) > 0)
+
+                      # Parse only the changed content
+                      new_first_line <- new_first_line - offset_before
+                      new_last_line <-  new_last_line + offset_after
+
+                      withProgress(
+                        expr = c(new_vv_, new_ff, new_hh_) %<-% parse(textContents, new_first_line, new_last_line,
+                                                                      variables=old_vv, hypotheses=old_hh),
+                        min = new_first_line,
+                        max = new_last_line,
+                        message = paste0(c("Refreshing", file_name), collapse = " ")
+                      )
+
+                      new_vv <- subset(new_vv_, origin %in% new_ff$id | id %in% new_ff$breakpoint)
+                      new_hh <- subset(new_hh_, sapply(new_hh_$functions, function (f) length(intersect(f, new_ff$id))) > 0)
+
+                      # Check for breakpoints, new variables or TODO: other things
+                      old_code_had_breakpoints <- nrow(changed_vv) > 0
+                      new_code_has_breakpoints <- nrow(new_vv) > 0
+
+                      if (old_code_had_breakpoints || new_code_has_breakpoints) {
+                        too_many_changes <- TRUE
+
+                        ff <- old_ff
+                        vv <- old_vv
+                        hh <- old_hh
+
+                        break
+
+                      } else {
+                        later_ff <- subset(ff, sapply(ff$lines, function (lines) lines[[1]]) > last_line + offset_after)
+
+                        later_ff$lines <- lapply(later_ff$lines, function (f) as.list(unlist(f) + diff_size))
+
+                        ff <- rbind(old_ff, new_ff, later_ff)
+
+                        hh$functions <- lapply(hh$functions, function (f) if (length(f)) as.list(intersect(f, ff$id)) else f)
+
+                        # NB: Variables don't need updating unless more sophisticated checks are implemented
+                        # vv <- vv
+
+                        if (nrow(new_hh)) {
+                          # TODO: fix the disassociation of the functions
+                          processor <- function (h) {
+                            old_functions <- hh[hh$id == h$id, ]$functions
+
+                            h$functions <- append(h$functions, old_functions[!old_functions %in% h$functions])
+                            # NB: The same story as with the variables overall
+                            # h$models <- h$models
+                            # h$formulas <- h$formulas
+
+                            h
+                          }
+
+                          new_hh <-
+                            apply(new_hh, 1, processor) %>%
+                            do.call(rbind, .) %>%
+                            as.data.frame
+
+                          hh <-
+                            rbind(subset(hh, !id %in% new_hh$id), new_hh) %>%
+                            subset(., lapply(.$functions, length) > 0)
+                        }
+                      }
                     }
                   }
 
-                  withProgress(
-                    expr = c(vv, ff, hh) %<-% parse(textContents, first_line, interactive = TRUE,
-                                                    variables=variables, functions=functions, hypotheses=hypotheses),
-                    min = first_line,
-                    max = length(textContents),
-                    message = paste0(c("Loading", file_name), collapse = " ")
-                  )
+                  if (too_many_changes) {
+                    withProgress(
+                      expr = c(vv, ff, hh) %<-% parse(textContents, first_line, interactive = TRUE,
+                                                      variables=vv, functions=ff, hypotheses=hh),
+                      min = first_line,
+                      max = length(textContents),
+                      message = paste0(c("Loading", file_name), collapse = " ")
+                    )
+                  }
 
                   variables <<- vv
                   functions <<- ff
