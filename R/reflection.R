@@ -141,10 +141,9 @@ diff <- function (text, old_text, vv, ff, hh) {
     new_first_line <- new_first_line - offset_before
     new_last_line <-  new_last_line + offset_after
 
-    # TODO: what if hypothesis is added before the place of it's first original appearance?
     withProgress(
       expr = c(new_variables_, new_functions, new_hypotheses_) %<-% parse(text, new_first_line, new_last_line,
-                                                                          variables=old_variables, hypotheses=old_hypotheses),
+                                                                          variables=old_variables, hypotheses=hh),
       min = new_first_line,
       max = new_last_line,
       message = "Refreshing"
