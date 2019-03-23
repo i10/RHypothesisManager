@@ -112,38 +112,39 @@ diff <- function (text, old_text, vv, ff, hh) {
     c(first_line, last_line) %<-% diff_pair[[1]]
     c(new_first_line, new_last_line) %<-% diff_pair[[2]]
 
-    diff_size <- (last_line - first_line) - (new_last_line - new_first_line)
-    # TODO: empty line additions and deletions
+    diff_size <- (new_last_line - new_first_line + (diff_type == "a")) - (last_line - first_line + (diff_type == "d"))
 
-    # Process the old functions that are being changed in the diff
-    changed_functions <- subset(ff, sapply(ff$lines, function (lines) first_line <= lines[[2]] && lines[[1]] <= last_line))
+    # Split the functions to before/within/after the change
+    prior_functions <-    subset(ff, sapply(lines, function (lines) lines[[2]]) < first_line)
+    changed_functions <-  subset(ff, sapply(lines, function (lines) first_line <= lines[[2]] && lines[[1]] <= last_line))
+    later_functions <-    subset(ff, sapply(lines, function (lines) lines[[1]]) > last_line)
 
-    changed_variables <- subset(vv, origin %in% changed_functions$id | id %in% changed_functions$breakpoint)
+    prior_variables <-    subset(vv,              type == "column" | origin %in% prior_functions$id)
+    prior_variables <-    subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
+    changed_variables <-  subset(vv,              origin %in% changed_functions$id | id %in% changed_functions$breakpoint)
 
-    offset_before <- first_line - changed_functions[1, ]$lines[[1]][[1]]
-    offset_after <- changed_functions[nrow(changed_functions), ]$lines[[1]][[2]] - last_line
+    prior_hypotheses <- hh
 
-    # Reconstruct the model at the state just before the modified lines
-    old_functions <- subset(ff,             sapply(lines, function (lines) lines[[2]]) < first_line - offset_before)
+    prior_hypotheses$functions <- lapply(prior_hypotheses$functions,  function (f) if (length(f)) as.list(intersect(f, prior_functions$id)) else f)
+    prior_hypotheses$models <-    lapply(prior_hypotheses$models,     function (m) if (length(m)) as.list(intersect(m, prior_variables$id)) else m)
+    prior_hypotheses$formulas <-  lapply(prior_hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f, prior_variables$id)) else f)
 
-    old_variables <- subset(vv,             type == "column" | origin %in% ff$id)
-    old_variables <- subset(old_variables,  type != "column" | id %in% unlist(vv$columns))
+    prior_hypotheses <- subset(prior_hypotheses, lapply(prior_hypotheses$functions, length) > 0)
 
-    old_hypotheses <- hh
+    # Process the changed content
+    if (nrow(changed_functions)) {
+      first_line <- changed_functions[1, ]$lines[[1]][[1]]
 
-    old_hypotheses$functions <- lapply(old_hypotheses$functions,  function (f) if (length(f)) as.list(intersect(f, old_functions$id)) else f)
-    old_hypotheses$models <-    lapply(old_hypotheses$models,     function (m) if (length(m)) as.list(intersect(m, old_variables$id)) else m)
-    old_hypotheses$formulas <-  lapply(old_hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f, old_variables$id)) else f)
+      new_first_line <- new_first_line - first_line + changed_functions[1, ]$lines[[1]][[1]]
+      new_last_line <-  new_last_line - last_line + changed_functions[nrow(changed_functions), ]$lines[[1]][[2]]
+    }
 
-    old_hypotheses <- subset(old_hypotheses, lapply(old_hypotheses$functions, length) > 0)
-
-    # Parse only the changed content
-    new_first_line <- new_first_line - offset_before
-    new_last_line <-  new_last_line + offset_after
+    later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
 
     withProgress(
       expr = c(new_variables_, new_functions, new_hypotheses_) %<-% parse(text, new_first_line, new_last_line,
-                                                                          variables=old_variables, hypotheses=hh),
+                                                                          interactive = TRUE,
+                                                                          variables=prior_variables, hypotheses=hh),
       min = new_first_line,
       max = new_last_line,
       message = "Refreshing"
@@ -157,14 +158,14 @@ diff <- function (text, old_text, vv, ff, hh) {
     new_code_has_breakpoints <- nrow(new_variables) > 0
 
     if (old_code_had_breakpoints || new_code_has_breakpoints) {
-      return(list(old_variables, old_functions, old_hypotheses, TRUE, first_line))
+      return(list(prior_variables, prior_functions, prior_hypotheses, TRUE, first_line))
     }
 
-    later_functions <- subset(ff, sapply(ff$lines, function (lines) lines[[1]]) > last_line + offset_after)
+    ff <- rbind(prior_functions, new_functions, later_functions)
 
-    later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
-
-    ff <- rbind(old_functions, new_functions, later_functions)
+    # If no acutal functions have been affected, just continue onward
+    if (!nrow(changed_functions) && !nrow(new_functions))
+      next
 
     hh$functions <- lapply(hh$functions, function (f) if (length(f)) as.list(intersect(f, ff$id)) else f)
     hh <- subset(hh, lapply(hh$functions, length) > 0)
