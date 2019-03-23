@@ -121,15 +121,6 @@ diff <- function (text, old_text, vv, ff, hh) {
 
     prior_variables <-    subset(vv,              type == "column" | origin %in% prior_functions$id)
     prior_variables <-    subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
-    changed_variables <-  subset(vv,              origin %in% changed_functions$id | id %in% changed_functions$breakpoint)
-
-    prior_hypotheses <- hh
-
-    prior_hypotheses$functions <- lapply(prior_hypotheses$functions,  function (f) if (length(f)) as.list(intersect(f, prior_functions$id)) else f)
-    prior_hypotheses$models <-    lapply(prior_hypotheses$models,     function (m) if (length(m)) as.list(intersect(m, prior_variables$id)) else m)
-    prior_hypotheses$formulas <-  lapply(prior_hypotheses$formulas,   function (f) if (length(f)) as.list(intersect(f, prior_variables$id)) else f)
-
-    prior_hypotheses <- subset(prior_hypotheses, lapply(prior_hypotheses$functions, length) > 0)
 
     # Process the changed content
     if (nrow(changed_functions)) {
@@ -142,24 +133,15 @@ diff <- function (text, old_text, vv, ff, hh) {
     later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
 
     withProgress(
-      expr = c(new_variables_, new_functions, new_hypotheses_) %<-% parse(text, new_first_line, new_last_line,
-                                                                          interactive = TRUE,
-                                                                          variables=prior_variables, hypotheses=hh),
+      expr = c(new_variables, new_functions, new_hypotheses) %<-% parse(text, new_first_line, new_last_line,
+                                                                        interactive = TRUE,
+                                                                        variables=prior_variables, hypotheses=hh),
       min = new_first_line,
       max = new_last_line,
       message = "Refreshing"
     )
 
-    new_variables <-  subset(new_variables_,  origin %in% new_functions$id | id %in% new_functions$breakpoint)
-    new_hypotheses <- subset(new_hypotheses_, sapply(new_hypotheses_$functions, function (f) length(intersect(f, new_functions$id))) > 0)
-
-    # Check for breakpoints, new variables or TODO: other things
-    old_code_had_breakpoints <- nrow(changed_variables) > 0
-    new_code_has_breakpoints <- nrow(new_variables) > 0
-
-    if (old_code_had_breakpoints || new_code_has_breakpoints) {
-      return(list(prior_variables, prior_functions, prior_hypotheses, TRUE, first_line))
-    }
+    new_hypotheses <- subset(new_hypotheses, sapply(new_hypotheses$functions, function (f) length(intersect(f, new_functions$id))) > 0)
 
     ff <- rbind(prior_functions, new_functions, later_functions)
 
@@ -167,34 +149,66 @@ diff <- function (text, old_text, vv, ff, hh) {
     if (!nrow(changed_functions) && !nrow(new_functions))
       next
 
-    hh$functions <- lapply(hh$functions, function (f) if (length(f)) as.list(intersect(f, ff$id)) else f)
-    hh <- subset(hh, lapply(hh$functions, length) > 0)
+    # Check if the code continuity has been preserved: i.e. if variable creation or modification ocasions can be translated
+    new_created_variables <-  subset(new_variables, origin %in% new_functions$id)
+    new_modified_variables <- subset(new_variables, id %in% new_functions$breakpoint)
 
-    # NB: Variables don't need updating unless more sophisticated checks are implemented
-    # vv <- vv
+    old_created_variables <-  subset(vv,            origin %in% changed_functions$id)
+    old_modified_variables <- subset(vv,            id %in% changed_functions$breakpoint)
 
-    if (nrow(new_hypotheses)) {
-      processor <- function (h) {
-        old_h <- as.list(hh[hh$id == h$id, ])
+    if (nrow(old_created_variables) != nrow(new_created_variables) ||
+        !setequal(old_created_variables$name, new_created_variables$name) ||
+        nrow(old_modified_variables) != nrow(new_modified_variables) ||
+        !setequal(old_modified_variables$id, new_modified_variables$id)) {
+      # I.e. continuity has been disrupted
+      hh$functions <- lapply(hh$functions,  function (f) if (length(f)) as.list(intersect(f, prior_functions$id)) else f)
+      hh$models <-    lapply(hh$models,     function (m) if (length(m)) as.list(intersect(m, prior_variables$id)) else m)
+      hh$formulas <-  lapply(hh$formulas,   function (f) if (length(f)) as.list(intersect(f, prior_variables$id)) else f)
+      hh <-           subset(hh,            lapply(hh$functions, length) > 0)
 
-        h$functions <- as.list(union(h$functions,  unlist(old_h$functions)))
-        h$models <-    as.list(union(h$models,     unlist(old_h$models)))
-        h$formulas <-  as.list(union(h$formulas,   unlist(old_h$formulas)))
-
-        h
-      }
-
-      new_hypotheses <-
-        apply(new_hypotheses, 1, processor) %>%
-        do.call(rbind, .) %>%
-        as.data.frame
-
-      for (id in new_hypotheses$id)
-        if (any(hh$id == id))
-          hh[hh$id == id, ] <- new_hypotheses[new_hypotheses$id == id, ]
-
-      hh <- rbind(hh, subset(new_hypotheses, !id %in% hh$id))
+      return(list(prior_variables, prior_functions, hh, TRUE, first_line))
     }
+
+    # Replace the variable names across the collections
+    if (nrow(new_created_variables)) {
+      new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$columns <- Map(
+        function (cc1, cc2) as.list(union(cc1, cc2)),
+        new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$columns,
+        old_created_variables$columns
+      )
+
+      vv[vv$id %in% old_created_variables$id, ] <- new_created_variables[match(old_created_variables$name, new_created_variables$name), ]
+
+      variable_id_mapping <- new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$id
+      names(variable_id_mapping) <- old_created_variables$id
+
+      ff$arguments <-   lapply(ff$arguments,  function (args) if (length(args)) lapply(args, function (arg) if (arg %in% names(variable_id_mapping)) variable_id_mapping[[arg]] else arg) else args)
+      ff$breakpoint <-  lapply(ff$breakpoint, function (b) if (b %in% names(variable_id_mapping)) variable_id_mapping[[b]] else b)
+
+      hh$models <-      lapply(hh$models,     function (m) if (length(m)) lapply(m, function (m) if (m %in% names(variable_id_mapping)) variable_id_mapping[[m]] else m) else m)
+      hh$formulas <-    lapply(hh$formulas,   function (f) if (length(f)) lapply(f, function (f) if (f %in% names(variable_id_mapping)) variable_id_mapping[[f]] else f) else f)
+    }
+
+    hh$functions <- lapply(hh$functions,  function (f) if (length(f)) as.list(intersect(f, ff$id)) else f)
+    hh <-           subset(hh,            lapply(hh$functions, length) > 0)
+
+    updated_hypotheses <- subset(new_hypotheses, id %in% hh$id)
+
+    if (nrow(updated_hypotheses)) {
+      updated_hypotheses$functions <- Map(function (f1, f2) as.list(union(f1, f2)),
+                                          updated_hypotheses$functions,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$functions)
+      updated_hypotheses$models <-    Map(function (m1, m2) as.list(union(m1, m2)),
+                                          updated_hypotheses$models,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$models)
+      updated_hypotheses$formulas <-  Map(function (f1, f2) as.list(union(f1, f2)),
+                                          updated_hypotheses$formulas,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$formulas)
+
+      hh[match(updated_hypotheses$id, hh$id), ] <- updated_hypotheses
+    }
+
+    hh <- rbind(hh, subset(new_hypotheses, !id %in% hh$id))
   }
 
   list(vv, ff, hh, FALSE, first_line)
