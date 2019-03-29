@@ -1,3 +1,5 @@
+import(diffobj)
+import(magrittr)
 import(miniUI)
 import(shiny)
 import(uuid)

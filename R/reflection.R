@@ -1,6 +1,3 @@
-library(uuid);
-
-
 own_error <- function (message, custom_code, call = sys.call(-1), ...) {
   structure(
     class = c("own_error", "error", "condition"),
@@ -9,27 +6,36 @@ own_error <- function (message, custom_code, call = sys.call(-1), ...) {
 }
 
 
-parse <- function (text, interactive = FALSE) {
+parse <- function (text, line_no1 = 1, line_non = NULL,
+                   variables = NULL, functions = NULL, hypotheses = NULL,
+                   interactive = FALSE) {
   # Prepare
-  variables <- data.frame(matrix(ncol = 8, nrow = 0));
-  colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
+  if (is.null(variables)) {
+    variables <- data.frame(matrix(ncol = 8, nrow = 0));
+    colnames(variables) <- c("id", "name", "precursors", "columns", "origin", "type", "value", "generation");
+  }
 
-  functions <- data.frame(matrix(ncol = 8, nrow = 0));
-  colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
+  if (is.null(functions)) {
+    functions <- data.frame(matrix(ncol = 8, nrow = 0));
+    colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint");
+  }
 
-  hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
-  colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
+  if (is.null(hypotheses)) {
+    hypotheses <- data.frame(matrix(ncol = 6, nrow = 0));
+    colnames(hypotheses) <- c("id", "name", "columns", "functions", "models", "formulas");
+  }
 
   env <<- new.env()
 
   # Run loop
-  line_no1 <- 1;
+  if (is.null(line_non))
+    line_non <- length(text)
 
-  while (line_no1 < length(text) + 1) {
+  while (line_no1 < line_non + 1) {
     line_no2 <- line_no1;
     break_ <- FALSE;
 
-    while (!break_ && line_no2 < length(text) + 1) {
+    while (!break_ && line_no2 < line_non + 1) {
       tryCatch(
         expr = {
           line <- paste0(text[line_no1:line_no2], collapse="\n");
@@ -86,6 +92,128 @@ parse <- function (text, interactive = FALSE) {
 
   list(variables, functions, hypotheses);
 }
+
+
+parse_diff <- function (text, old_text, vv, ff, hh) {
+  text_diff <- ses(old_text, text)
+
+  for (diff in text_diff) {
+    # Introspect the diff data
+    diff_type <- regmatches(diff, regexpr("[acd]", diff))
+
+    diff_pair <- lapply(
+      strsplit(diff, "[acd]"),
+      function (line) lapply(
+        line,
+        function (part) as.integer(if (grepl(",", part)) strsplit(part, ",")[[1]] else c(part, part))
+      )
+    )[[1]]
+
+    c(first_line, last_line) %<-% diff_pair[[1]]
+    c(new_first_line, new_last_line) %<-% diff_pair[[2]]
+
+    diff_size <- (new_last_line - new_first_line + (diff_type == "a")) - (last_line - first_line + (diff_type == "d"))
+
+    # Split the functions to before/within/after the change
+    prior_functions <-    subset(ff, sapply(lines, function (lines) lines[[2]]) < first_line)
+    changed_functions <-  subset(ff, sapply(lines, function (lines) first_line <= lines[[2]] && lines[[1]] <= last_line))
+    later_functions <-    subset(ff, sapply(lines, function (lines) lines[[1]]) > last_line)
+
+    prior_variables <-    subset(vv,              type == "column" | origin %in% prior_functions$id)
+    prior_variables <-    subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
+
+    # Process the changed content
+    if (nrow(changed_functions)) {
+      first_line <- changed_functions[1, ]$lines[[1]][[1]]
+
+      new_first_line <- new_first_line - first_line + changed_functions[1, ]$lines[[1]][[1]]
+      new_last_line <-  new_last_line - last_line + changed_functions[nrow(changed_functions), ]$lines[[1]][[2]]
+    }
+
+    later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
+
+    withProgress(
+      expr = c(new_variables, new_functions, new_hypotheses) %<-% parse(text, new_first_line, new_last_line,
+                                                                        interactive = TRUE,
+                                                                        variables=prior_variables, hypotheses=hh),
+      min = new_first_line,
+      max = new_last_line,
+      message = "Refreshing"
+    )
+
+    new_hypotheses <- subset(new_hypotheses, sapply(new_hypotheses$functions, function (f) length(intersect(f, new_functions$id))) > 0)
+
+    ff <- rbind(prior_functions, new_functions, later_functions)
+
+    # If no acutal functions have been affected, just continue onward
+    if (!nrow(changed_functions) && !nrow(new_functions))
+      next
+
+    # Check if the code continuity has been preserved: i.e. if variable creation or modification ocasions can be translated
+    new_created_variables <-  subset(new_variables, origin %in% new_functions$id)
+    new_modified_variables <- subset(new_variables, id %in% new_functions$breakpoint)
+
+    old_created_variables <-  subset(vv,            origin %in% changed_functions$id)
+    old_modified_variables <- subset(vv,            id %in% changed_functions$breakpoint)
+
+    if (nrow(old_created_variables) != nrow(new_created_variables) ||
+        !setequal(old_created_variables$name, new_created_variables$name) ||
+        nrow(old_modified_variables) != nrow(new_modified_variables) ||
+        !setequal(old_modified_variables$id, new_modified_variables$id)) {
+      # I.e. continuity has been disrupted
+      hh$functions <- lapply(hh$functions,  function (f) if (length(f)) as.list(intersect(f, prior_functions$id)) else f)
+      hh$models <-    lapply(hh$models,     function (m) if (length(m)) as.list(intersect(m, prior_variables$id)) else m)
+      hh$formulas <-  lapply(hh$formulas,   function (f) if (length(f)) as.list(intersect(f, prior_variables$id)) else f)
+      hh <-           subset(hh,            lapply(hh$functions, length) > 0)
+
+      return(list(prior_variables, prior_functions, hh, TRUE, first_line))
+    }
+
+    # Replace the variable names across the collections
+    if (nrow(new_created_variables)) {
+      new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$columns <- Map(
+        function (cc1, cc2) as.list(union(cc1, cc2)),
+        new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$columns,
+        old_created_variables$columns
+      )
+
+      vv[vv$id %in% old_created_variables$id, ] <- new_created_variables[match(old_created_variables$name, new_created_variables$name), ]
+
+      variable_id_mapping <- new_created_variables[match(old_created_variables$name, new_created_variables$name), ]$id
+      names(variable_id_mapping) <- old_created_variables$id
+
+      ff$arguments <-   lapply(ff$arguments,  function (args) if (length(args)) lapply(args, function (arg) if (arg %in% names(variable_id_mapping)) variable_id_mapping[[arg]] else arg) else args)
+      ff$breakpoint <-  lapply(ff$breakpoint, function (b) if (b %in% names(variable_id_mapping)) variable_id_mapping[[b]] else b)
+
+      hh$models <-      lapply(hh$models,     function (m) if (length(m)) lapply(m, function (m) if (m %in% names(variable_id_mapping)) variable_id_mapping[[m]] else m) else m)
+      hh$formulas <-    lapply(hh$formulas,   function (f) if (length(f)) lapply(f, function (f) if (f %in% names(variable_id_mapping)) variable_id_mapping[[f]] else f) else f)
+    }
+
+    hh$functions <- lapply(hh$functions,  function (f) if (length(f)) as.list(intersect(f, ff$id)) else f)
+    hh <-           subset(hh,            lapply(hh$functions, length) > 0)
+
+    updated_hypotheses <- subset(new_hypotheses, id %in% hh$id)
+
+    if (nrow(updated_hypotheses)) {
+      updated_hypotheses$functions <- Map(function (f1, f2) as.list(union(f1, f2)),
+                                          updated_hypotheses$functions,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$functions)
+      updated_hypotheses$models <-    Map(function (m1, m2) as.list(union(m1, m2)),
+                                          updated_hypotheses$models,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$models)
+      updated_hypotheses$formulas <-  Map(function (f1, f2) as.list(union(f1, f2)),
+                                          updated_hypotheses$formulas,
+                                          hh[match(updated_hypotheses$id, hh$id), ]$formulas)
+
+      hh[match(updated_hypotheses$id, hh$id), ] <- updated_hypotheses
+    }
+
+    hh <- rbind(hh, subset(new_hypotheses, !id %in% hh$id))
+  }
+
+  list(vv, ff, hh, FALSE, first_line)
+}
+
 
 
 find_hypothesis <- function (exp, hypotheses, variables, add = FALSE) {
@@ -914,8 +1042,10 @@ addin <- function () {
   server <- function (input, output, session) {
     invalidatePeriodically <- reactiveTimer(intervalMs = 1000);
 
-    old_path <- "";
-    old_hash <- "";
+    old_path <- ""
+    old_hash <- ""
+    old_text <- ""
+
     variables <- NULL
     functions <- NULL
     hypotheses <- NULL
@@ -945,18 +1075,38 @@ addin <- function () {
             setwd(dirname(path))
 
           file_name <- basename(path)
-          hash <- digest::digest(textContents, "md5");
+          hash <- digest::digest(textContents, "md5")
+
+          if (path != old_path) {
+            variables <- NULL
+            functions <- NULL
+            hypotheses <- NULL
+          }
 
           if (path != old_path || hash != old_hash) {
             tryCatch(
               expr = withCallingHandlers(
                 expr = {
-                  withProgress(
-                    expr = c(vv, ff, hh) %<-% parse(textContents, interactive = TRUE),
-                    min = 1,
-                    max = length(textContents),
-                    message = paste0(c("Loading", file_name), collapse = " ")
-                  )
+                  too_many_changes <- path != old_path || !isTruthy(old_text)
+                  first_line <- 1
+
+                  vv <- variables
+                  ff <- functions
+                  hh <- hypotheses
+
+                  if (!too_many_changes) {
+                    c(vv, ff, hh, too_many_changes, first_line) %<-% parse_diff(textContents, old_text, variables, functions, hypotheses)
+                  }
+
+                  if (too_many_changes) {
+                    withProgress(
+                      expr = c(vv, ff, hh) %<-% parse(textContents, first_line, interactive = TRUE,
+                                                      variables=vv, functions=ff, hypotheses=hh),
+                      min = first_line,
+                      max = length(textContents),
+                      message = paste0(c("Loading", file_name), collapse = " ")
+                    )
+                  }
 
                   variables <<- vv
                   functions <<- ff
@@ -1029,8 +1179,9 @@ addin <- function () {
               },
 
               finally = {
-                old_path <<- path;
-                old_hash <<- hash;
+                old_path <<- path
+                old_hash <<- hash
+                old_text <<- textContents
               }
             );
           }
