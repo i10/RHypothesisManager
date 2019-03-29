@@ -94,7 +94,7 @@ parse <- function (text, line_no1 = 1, line_non = NULL,
 }
 
 
-diff <- function (text, old_text, vv, ff, hh) {
+parse_diff <- function (text, old_text, vv, ff, hh) {
   text_diff <- ses(old_text, text)
 
   for (diff in text_diff) {
@@ -1095,7 +1095,7 @@ addin <- function () {
                   hh <- hypotheses
 
                   if (!too_many_changes) {
-                    c(vv, ff, hh, too_many_changes, first_line) %<-% diff(textContents, old_text, variables, functions, hypotheses)
+                    c(vv, ff, hh, too_many_changes, first_line) %<-% parse_diff(textContents, old_text, variables, functions, hypotheses)
                   }
 
                   if (too_many_changes) {
