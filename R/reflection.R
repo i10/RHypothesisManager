@@ -1351,11 +1351,18 @@ addin <- function () {
     observeEvent(
       input$edit,
       {
+        first_line <- subset(functions, id %in% input$select)$lines[[1]][[1]]
+
+        prior_functions <- subset(functions,       sapply(lines, function (lines) lines[[2]]) < first_line)
+
+        prior_variables <- subset(variables,       type == "column" | origin %in% prior_functions$id)
+        prior_variables <- subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
+
         showModal(hypothesisEditor(
           hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
           title = "Edit",
           action_id = "replace_selection",
-          variables = variables
+          variables = prior_variables
         ))
       }
     )
@@ -1402,11 +1409,18 @@ addin <- function () {
     observeEvent(
       input$copy,
       {
+        first_line <- subset(functions, id %in% input$select)$lines[[1]][[1]]
+
+        prior_functions <- subset(functions,       sapply(lines, function (lines) lines[[2]]) < first_line)
+
+        prior_variables <- subset(variables,       type == "column" | origin %in% prior_functions$id)
+        prior_variables <- subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
+
         showModal(hypothesisEditor(
           hypothesis = as.list(hypotheses[hypotheses$id == input$copy_hypothesis, ]),
           title = "Copy",
           action_id = "paste",
-          variables = variables
+          variables = prior_variables
         ))
       }
     )
