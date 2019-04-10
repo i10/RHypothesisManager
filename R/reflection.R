@@ -882,7 +882,7 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
       # If in the "shallow" mode and any of the variables referenced in the hypothesis are not "columns"
       #   -- brand them as such and add them to whichever "dataset" variable found within arguments of the same function
       if (!eval_ && nrow(hypotheses)) {
-        hypothesis_selector <- apply(hypotheses, 1, function (h) func$id %in% h$functions || h$id %in% func$arguments)
+        hypothesis_selector <- sapply(hypotheses$functions, function (functions) func$id %in% functions) | hypotheses$id %in% func$arguments
 
         if (nrow(hypotheses[hypothesis_selector, ])) {
           columns <- hypotheses[hypothesis_selector, ]$columns[[1]]
@@ -892,10 +892,10 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
           if (!is.null(columns$dependant))
             column_list <- append(column_list, columns$dependant)
 
-          constant_selector <- variables$type != "column" & apply(variables, 1, function (v) v$id %in% column_list)
-          dataset_selector <- variables$type == "data" & apply(variables, 1, function (v) v$id %in% func$arguments)
+          constant_selector <- variables$type != "column" & variables$id %in% column_list
+          dataset_selector <- variables$type == "data" & variables$id %in% func$arguments
 
-          if (any(constant_selector) && nrow(variables[dataset_selector, ])) {
+          if (any(constant_selector) && any(dataset_selector)) {
             data_var <- as.list(variables[dataset_selector, ])
 
             for (col_id in column_list)
@@ -981,7 +981,7 @@ hypothesisEditor <- function (hypothesis, title, action_id, variables) {
 
   for (id in variables[variables$type == "column", ]$id) {
     col_name <- variables[variables$id == id, ]$name
-    dataset_name <- variables[apply(variables, 1, function (v) id %in% v$columns ), ]$name
+    dataset_name <- variables[sapply(variables$columns, function (columns) id %in% columns ), ]$name
 
     name <- paste(c(col_name, "|", dataset_name), collapse = " ")
 
@@ -1116,7 +1116,7 @@ addin <- function () {
                   hypotheses <<- hh
 
                   # Clear the undumpable values from the variables list
-                  dumpability_selector = apply(vv, 1, function (v) is.na(v$value) || tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
+                  dumpability_selector = is.na(vv$value) | apply(vv, 1, function (v) tryCatch(expr = { jsonlite::toJSON(v); TRUE }, error = function(...) FALSE))
 
                   if (!all(dumpability_selector))
                     vv[!dumpability_selector, ]$value <- NA
@@ -1218,10 +1218,8 @@ addin <- function () {
     observeEvent(
       input$select,
       {
-        selector <- apply(functions, 1, function (f) f$id %in% input$select)
-
         selection_ranges <- lapply(
-          functions[selector, ]$lines,
+          functions[functions$id %in% input$select, ]$lines,
           function (lines) document_range(c(lines[[1]], 0), c(lines[[2]], Inf))
         )
 
@@ -1319,7 +1317,7 @@ addin <- function () {
             }
           }
 
-        function_selector <- apply(functions, 1, function(f) f$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]])
+        function_selector <- functions$id %in% hypotheses[hypotheses$id == input$edit_hypothesis, ]$functions[[1]]
 
         t <- FALSE
         for (i in 1:nrow(functions)) {
@@ -1389,11 +1387,9 @@ addin <- function () {
             }
           }
 
-        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
+        ff = subset(functions, id %in% input$select)
 
-        if (any(function_selector)) {
-          ff = functions[function_selector, ]
-
+        if (nrow(ff)) {
           for (i in 1:nrow(ff)) {
             func <- as.list(ff[i,])
 
@@ -1447,7 +1443,7 @@ addin <- function () {
             }
           }
 
-        function_selector <- apply(functions, 1, function (f) f$id %in% input$select)
+        function_selector <- functions$id %in% input$select
 
         last_func_index <- Position(function (x) x, function_selector, right = TRUE)
 
