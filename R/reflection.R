@@ -549,9 +549,14 @@ hypothesis_subroutine <- function (exp, variables, functions, hypotheses,
 }
 
 
-recursion <- function (exp, variables, functions, hypotheses,
+recursion <- function (exp, variables, functions = NULL, hypotheses,
                        addition_mode = FALSE, force_as_function = FALSE,
                        depth = 0) {
+  if (is.null(functions)) {
+    functions <- data.frame(matrix(ncol = 8, nrow = 0))
+    colnames(functions) <- c("id", "name", "lines", "signature", "packages", "arguments", "depth", "breakpoint")
+  }
+
   depth <- depth + 1;
 
   # Is assignment line
@@ -561,7 +566,7 @@ recursion <- function (exp, variables, functions, hypotheses,
     if (is.call(exp[[2]])) {
       is_mutation <- TRUE;
 
-      c(variables, tmp, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
+      c(variables, tmp, hypotheses) %<-% recursion(exp[[2]], variables, NULL, hypotheses,
                                                    addition_mode = TRUE, depth = depth)
 
       var_name <- exp[[2]];
@@ -576,11 +581,9 @@ recursion <- function (exp, variables, functions, hypotheses,
       var_name <- as.character(exp[[2]]);
     }
 
-    before_funcs <- nrow(functions);
-
     # Find the precursors and invoked functions
-    c(variables, functions, hypotheses) %<-% recursion(exp[[3]], variables, functions, hypotheses,
-                                                       addition_mode = TRUE, depth = depth);
+    c(variables, new_functions, hypotheses) %<-% recursion(exp[[3]], variables, NULL, hypotheses,
+                                                           addition_mode = TRUE, depth = depth)
 
     var_geneneration <- 0;
     precursor_variable_ids <- list();
@@ -589,7 +592,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       for (var_index in 1:nrow(variables)) {
         variable <- as.list(variables[var_index, ]);
 
-        for (func_args in functions[(before_funcs + 1):nrow(functions), ]$arguments) {
+        for (func_args in new_functions$arguments) {
           if (variable$id %in% func_args) {
             if (variable$type == "column") {
               # TODO: do smth?
@@ -615,12 +618,14 @@ recursion <- function (exp, variables, functions, hypotheses,
                                                force = !is_mutation,
                                                type_constraint = c("data", "model", "constant"));
 
+    last_function <- new_functions[nrow(new_functions), ]
+
     if (is.na(variables[var_index, ]$origin)) {
-      variables[var_index, ]$origin <- functions[nrow(functions), ]$id;
+      variables[var_index, ]$origin <- last_function$id;
     }
 
     if (is_mutation) {
-      functions[nrow(functions), ]$breakpoint <- variables[var_index, ]$id;
+      new_functions[nrow(new_functions), ]$breakpoint <- variables[var_index, ]$id;
 
     } else {
       variables[var_index, ]$generation <- var_geneneration;
@@ -632,14 +637,13 @@ recursion <- function (exp, variables, functions, hypotheses,
     #   or infer it from the fact it has been read from the file source.
     # If evaluation is enabled, the data type will be set upon the evaluation later on
     if (!eval_ &&
-        functions[nrow(functions), ]$name %in% list("subset", "[", "data.frame", "as.data.frame", "table", "rbind", "cbind") ||
-        startsWith(functions[nrow(functions), ]$name, "read")) {
+        last_function$name %in% list("subset", "[", "data.frame", "as.data.frame", "table", "rbind", "cbind") ||
+        startsWith(last_function$name, "read")) {
       variables[var_index, ]$type <- "data";
 
     # Explicit formula variable declarations
-    } else if (before_funcs - nrow(functions) == 1 &&
-               functions[nrow(functions), ]$name == "~") {
-      selector <- apply(hypotheses, 1, function (hyp) functions[nrow(functions)]$id %in% hyp$functions);
+    } else if (nrow(new_functions) == 1 && last_function$name == "~") {
+      selector <- sapply(hypotheses$functions, function (h_funcs) last_function$id %in% h_funcs);
 
       variables[var_index, ]$value <- hypotheses[selector, ]$id;
       variables[var_index, ]$type <- "formula";
@@ -647,32 +651,28 @@ recursion <- function (exp, variables, functions, hypotheses,
       hypotheses[selector, ]$formulas[[1]] = append(hypotheses[selector, ]$formulas[[1]], variables[var_index, ]$id);
 
     } else if (nrow(hypotheses)) {
-      for (func_id in functions[(before_funcs + 1):nrow(functions), ]$id) {
-        func_args <- functions[functions$id == func_id, ]$arguments[[1]];
+      for (func_id in new_functions$id) {
+        func_args <- new_functions[new_functions$id == func_id, ]$arguments[[1]];
 
-        selector <- apply(hypotheses, 1, function (hyp) func_id %in% hyp$functions || hyp$id %in% func_args);
+        selector <- sapply(hypotheses$functions, function (h_funcs) func_id %in% h_funcs) | hypotheses$id %in% func_args
 
-        if (nrow(hypotheses[selector, ])) {
+        if (any(selector)) {
           variables[var_index, ]$type <- "model";
 
-          for (hyp_id in hypotheses[selector, ]$id) {
-            hypotheses[hypotheses$id == hyp_id, ]$models[[1]] <- append(hypotheses[hypotheses$id == hyp_id, ]$models[[1]],
-                                                                        variables[var_index, ]$id)
-          }
+          hypotheses[selector, ]$models <- lapply(hypotheses[selector, ]$models,
+                                                  function (models) append(models, variables[var_index, ]$id))
         }
       }
     }
 
     # 2nd (and further) gen models
-    model_precursor_selector <- apply(variables, 1, function (v) v$id %in% precursor_variable_ids) & variables$type == "model"
+    model_precursors <- subset(variables, id %in% precursor_variable_ids & type == "model")
 
-    if (any(model_precursor_selector)) {
-      parent_model_ids <- variables[model_precursor_selector, ]$id
+    if (nrow(model_precursors)) {
+      selector <- sapply(hypotheses$models, function (models) any(model_precursors$id %in% models))
 
-      for (m_id in parent_model_ids) {
-        hypothesis_selector <- apply(hypotheses, 1, function (h) m_id %in% h$models)
-        hypotheses[hypothesis_selector, ]$models[[1]] <- append(hypotheses[hypothesis_selector, ]$models[[1]], variables[var_index, ]$id)
-      }
+      hypotheses[selector, ]$models <- lapply(hypotheses[selector, ]$models,
+                                              function (models) append(models, variables[var_index, ]$id))
 
       variables[var_index, ]$type <- "model"
     }
@@ -705,6 +705,7 @@ recursion <- function (exp, variables, functions, hypotheses,
       eval(exp, envir = env)
     }
 
+    # Create columns from file-loaded data
     if (variables[var_index, ]$type == "data" && !is.na(variables[var_index, ]$value) && !length(variables[var_index, ]$columns[[1]])) {
       for (col_name in colnames(variables[var_index, ]$value[[1]])) {
         c(col_index, variables) %<-% find_variable(col_name, variables,
@@ -717,6 +718,8 @@ recursion <- function (exp, variables, functions, hypotheses,
         variables[var_index, ]$columns[[1]] <- append(variables[var_index, ]$columns[[1]], variables[col_index, ]$id)
       }
     }
+
+    functions <- rbind(functions, new_functions)
 
   # Is "[" call
   } else if (is.call(exp) && identical(exp[[1]], quote(`[`)) && !force_as_function) {
