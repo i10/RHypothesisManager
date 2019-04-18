@@ -624,7 +624,8 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
       variables[var_index, ]$origin <- last_function$id;
     }
 
-    if (is_mutation) {
+    # TODO: reassess the case when there are no new functions
+    if (is_mutation && nrow(new_functions)) {
       new_functions[nrow(new_functions), ]$breakpoint <- variables[var_index, ]$id;
 
     } else {
@@ -637,8 +638,9 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
     #   or infer it from the fact it has been read from the file source.
     # If evaluation is enabled, the data type will be set upon the evaluation later on
     if (!eval_ &&
-        last_function$name %in% list("subset", "[", "data.frame", "as.data.frame", "table", "rbind", "cbind") ||
-        startsWith(last_function$name, "read")) {
+        nrow(last_function) &&
+        (last_function$name %in% list("subset", "[", "data.frame", "as.data.frame", "table", "rbind", "cbind") ||
+         startsWith(last_function$name, "read"))) {
       variables[var_index, ]$type <- "data";
 
     # Explicit formula variable declarations
@@ -748,8 +750,9 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
       }
 
     } else {
-      c(variables, functions, hypotheses) %<-% recursion(exp[[2]], variables, functions, hypotheses,
-                                                         addition_mode = addition_mode, depth = depth);
+      c(variables, functions, hypotheses) %<-% recursion(exp, variables, functions, hypotheses,
+                                                         addition_mode = addition_mode, depth = depth,
+                                                         force_as_function = TRUE);
     }
 
   # Is "$" call
