@@ -139,20 +139,15 @@ addin <- function () {
 
   eval_ <<- FALSE
   strict <<- FALSE
-  pause <<- FALSE
 
   ui = bootstrapPage(
     gadgetTitleBar("",
       left = tags$div(
-        actionButton("execute", "Execute selection", icon = icon("play")),
-        simpleCheckbox("strict", "Stop on warnings", value = strict, inline = TRUE),
+        actionButton("parse", "Parse", icon = icon("sync")),
         simpleCheckbox("eval", "Shallow evaluation", value = !eval_, inline = TRUE,
                        title = "Only analyze textual content of the script. Uncheck to evaluate the variable values")
       ),
-      right = tags$div(
-        simpleCheckbox("pause", "Pause", value = pause, inline = TRUE),
-        actionButton("exit", "Exit")
-      )
+      right = actionButton("exit", "Exit")
     ),
     HypothesisManagerOutput("graph")
   )
@@ -161,8 +156,6 @@ addin <- function () {
   last_error_id <<- NULL
 
   server <- function (input, output, session) {
-    invalidatePeriodically <- reactiveTimer(intervalMs = 1000)
-
     old_path <- ""
     old_hash <- ""
     old_text <- ""
@@ -171,13 +164,9 @@ addin <- function () {
     functions <- NULL
     hypotheses <- NULL
 
-    observe(
+    observeEvent(
+      input$parse,
       {
-        invalidatePeriodically()
-
-        if (pause)
-          return()
-
         tryCatch(
           expr = {
             c(id, path, textContents, selections) %<-% getSourceEditorContext()[0:4]
@@ -188,8 +177,6 @@ addin <- function () {
             }
 
             if (!isTruthy(textContents)) {
-              pause <<- TRUE
-              updateCheckboxInput(getDefaultReactiveDomain(), "pause", value = pause)
               return()
             }
 
