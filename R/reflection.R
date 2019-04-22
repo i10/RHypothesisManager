@@ -109,8 +109,9 @@ parse_diff <- function (text, old_text, vv, ff, hh) {
       )
     )[[1]]
 
-    c(first_line, last_line) %<-% diff_pair[[1]]
+    c(first_line, last_line) %<-%         diff_pair[[1]]
     c(new_first_line, new_last_line) %<-% diff_pair[[2]]
+    c(offset_before, offset_after) %<-%   c(0, 0)
 
     diff_size <- (new_last_line - new_first_line + (diff_type == "a")) - (last_line - first_line + (diff_type == "d"))
 
@@ -119,18 +120,29 @@ parse_diff <- function (text, old_text, vv, ff, hh) {
     changed_functions <-  subset(ff, sapply(lines, function (lines) first_line <= lines[[2]] && lines[[1]] <= last_line))
     later_functions <-    subset(ff, sapply(lines, function (lines) lines[[1]]) > last_line)
 
-    prior_variables <-    subset(vv,              type == "column" | origin %in% prior_functions$id)
-    prior_variables <-    subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
+    # Process the affected content
+    later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
 
-    # Process the changed content
     if (nrow(changed_functions)) {
-      first_line <- changed_functions[1, ]$lines[[1]][[1]]
+      offset_before <- changed_functions[1, ]$lines[[1]][[1]] - first_line
+      offset_after <-  changed_functions[nrow(changed_functions), ]$lines[[1]][[2]] - last_line
 
-      new_first_line <- new_first_line - first_line + changed_functions[1, ]$lines[[1]][[1]]
-      new_last_line <-  new_last_line - last_line + changed_functions[nrow(changed_functions), ]$lines[[1]][[2]]
+      # For possible premature return
+      first_line <- changed_functions[1, ]$lines[[1]][[1]]
     }
 
-    later_functions$lines <- lapply(later_functions$lines, function (f) as.list(unlist(f) + diff_size))
+    new_first_line <- new_first_line - offset_before
+    new_last_line <- new_last_line - offset_after
+
+    clean_operation <- offset_before == 0 && offset_after == 0  # Full-function addition or deletion
+
+    if (diff_type == "a" && clean_operation) {
+      prior_functions <- rbind(prior_functions, changed_functions)
+      changed_functions <- subset(changed_functions, FALSE)
+    }
+
+    prior_variables <- subset(vv,              type == "column" | origin %in% prior_functions$id)
+    prior_variables <- subset(prior_variables, type != "column" | id %in% unlist(prior_variables$columns))
 
     withProgress(
       expr = c(new_variables, new_functions, new_hypotheses) %<-% parse(text, new_first_line, new_last_line,
@@ -140,6 +152,10 @@ parse_diff <- function (text, old_text, vv, ff, hh) {
       max = new_last_line,
       message = "Refreshing"
     )
+
+    if (diff_type == "d" && clean_operation) {
+      new_functions <- subset(new_functions, FALSE)
+    }
 
     new_hypotheses <- subset(new_hypotheses, sapply(new_hypotheses$functions, function (f) length(intersect(f, new_functions$id))) > 0)
 
