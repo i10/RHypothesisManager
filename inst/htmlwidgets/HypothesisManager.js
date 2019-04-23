@@ -412,8 +412,9 @@ HTMLWidgets.widget({
                     });
 
                     const bbox = g.node().getBoundingClientRect();
+                    const svg_bbox = svg.node().getBoundingClientRect();
 
-                    const offsetLeft = -(bbox.left + svg.node().parentNode.scrollLeft - svg.node().offsetLeft - 25);
+                    const offsetLeft = -(bbox.left + svg.node().parentNode.scrollLeft - svg_bbox.left - 25);
 
                     g.attr("transform", "translate(" + offsetLeft + ", 50)");
 
