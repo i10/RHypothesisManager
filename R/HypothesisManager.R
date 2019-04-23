@@ -176,6 +176,11 @@ addin <- function () {
               failing_context_notification_id <<- NULL
             }
 
+            if (!is.null(last_error_id)) {
+              removeNotification(last_error_id)
+              last_error_id <<- NULL
+            }
+
             if (!isTruthy(textContents)) {
               return()
             }
@@ -347,6 +352,7 @@ addin <- function () {
         setCursorPosition(document_position(line_no1, -1L))
 
         removeNotification(last_error_id)
+        last_error_id <<- NULL
       }
     )
 
@@ -603,6 +609,7 @@ addin <- function () {
           install.packages(lib)
 
           removeNotification(last_error_id)
+          last_error_id <<- NULL
 
           library(lib, character.only = TRUE)
 
