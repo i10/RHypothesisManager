@@ -55,8 +55,8 @@ HypothesisManager_html <- function(id, style, class, ...) {
     tag("div", list(
       id = "wrapper",
       tag("svg", list()),
-      actionButton("edit", "Edit", icon = icon("edit")),
-      actionButton("copy", "Copy", icon = icon("copy"))
+      actionButton("edit", "Inject data in place", icon = icon("edit")),
+      actionButton("copy", "Inject data into a clone", icon = icon("copy"))
     )),
     tag("div", list(
       id="legend",
