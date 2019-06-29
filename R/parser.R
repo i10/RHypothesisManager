@@ -636,7 +636,7 @@ recursion <- function (exp, variables, functions = NULL, hypotheses,
 
     last_function <- new_functions[nrow(new_functions), ]
 
-    if (is.na(variables[var_index, ]$origin)) {
+    if (nrow(last_function) && is.na(variables[var_index, ]$origin)) {
       variables[var_index, ]$origin <- last_function$id;
     }
 
