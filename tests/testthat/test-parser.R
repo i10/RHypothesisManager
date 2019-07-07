@@ -1,6 +1,6 @@
 test_that("parsing works on examples", {
   expect_parse <- function (fileName) {
-    
+
     uuidCounter <<- 0
     UUIDgenerate <<- function () {
         uuidCounter <<- uuidCounter + 1
@@ -30,5 +30,8 @@ test_that("parsing works on examples", {
   );
   expect_parse(
     "4DoingTestsOfAssumptions"
+  );
+  expect_parse(
+    "7DoingFactorialANOVAs"
   )
 })
