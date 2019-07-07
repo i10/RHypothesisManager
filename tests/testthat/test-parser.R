@@ -1,11 +1,12 @@
-uuidCounter <<- 0
-UUIDgenerate <<- function () {
-    uuidCounter <<- uuidCounter + 1
-    uuidCounter
-}
-
 test_that("parsing works on examples", {
   expect_parse <- function (fileName) {
+    
+    uuidCounter <<- 0
+    UUIDgenerate <<- function () {
+        uuidCounter <<- uuidCounter + 1
+        uuidCounter
+    }
+
     path <- paste0("../snapshots/", fileName, ".R")
     code <- readChar(path, file.info(path)$size)
 
@@ -27,4 +28,7 @@ test_that("parsing works on examples", {
   expect_parse(
     "intermediate-kbd-study"
   );
+  expect_parse(
+    "4DoingTestsOfAssumptions"
+  )
 })
