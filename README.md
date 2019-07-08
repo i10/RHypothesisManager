@@ -20,3 +20,8 @@ Installation is complete!
 
 * Hypothesis Manager is available under the "Add-in" list at the top of RStudio. Clicking on it will open a viewer pane (usually located on the right) in RStudio. 
 * The addin captures the source code of the R file that is currently open and active. You can use this while writing source code or to view your past source code files.
+
+# Architectural Overivew
+The main entrypoint is `./R/HypothesisManager.R`, providing the definition of the [addin](https://rstudio.github.io/rstudioaddins/) and glueing together the parser that analyzes the code (`./R/parser.R`) and the [custom widget](https://www.htmlwidgets.org/develop_intro.html) for the tree (`./inst/htmlwidgets/HypothesisManager.js`).
+
+As syntactic sugar, the package [`zeallot`](https://github.com/r-lib/zeallot) is used to simplify unpacking function returns containing multiple values.
