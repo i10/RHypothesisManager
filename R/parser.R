@@ -27,6 +27,13 @@ parse <- function (text, line_no1 = 1, line_non = NULL,
 
   env <<- new.env()
 
+  # Enable for snapshots
+  uuidCounter <<- 0
+  UUIDgenerate <<- function () {
+      uuidCounter <<- uuidCounter + 1
+      uuidCounter
+  }
+
   # Run loop
   if (is.null(line_non))
     line_non <- length(text)

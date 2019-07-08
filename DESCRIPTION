@@ -15,3 +15,5 @@ Imports:
     uuid,
     htmlwidgets
 RoxygenNote: 5.0.1
+Suggests: 
+    testthat (>= 2.1.0)
